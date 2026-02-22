@@ -1,0 +1,138 @@
+import Link from 'next/link';
+import { CheckCircle2, MessageCircle, TrendingUp, Clock, ArrowRight, Smartphone } from 'lucide-react';
+
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Navigation */}
+      <nav className="border-b border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-xl tracking-tight">PayRecover</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+              Sign In
+            </Link>
+            <Link href="/dashboard" className="text-sm font-medium bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
+              View MVP Dashboard
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium mb-8">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          Built for MENA Clinics, Gyms & Coaches
+        </div>
+        <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-slate-900 mb-6 max-w-4xl mx-auto leading-tight">
+          Stop chasing payments. <br className="hidden md:block" />
+          <span className="text-emerald-500">Let automations do it.</span>
+        </h1>
+        <p className="text-lg text-slate-600 mb-10 max-w-2xl mx-auto">
+          Automate your invoice follow-ups with smart WhatsApp and SMS reminders. Recover lost revenue without the awkward conversations.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link href="/dashboard" className="flex items-center gap-2 bg-emerald-500 text-white px-8 py-4 rounded-xl font-medium hover:bg-emerald-600 transition-colors text-lg w-full sm:w-auto justify-center">
+            Start Recovering Payments
+            <ArrowRight className="w-5 h-5" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="py-20 bg-slate-50 border-y border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Everything you need to get paid on time</h2>
+            <p className="text-slate-600 max-w-2xl mx-auto">Set it up once and let our system handle the follow-ups automatically.</p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6">
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">WhatsApp & SMS</h3>
+              <p className="text-slate-600">Reach your clients where they actually look. Automated messages sent directly to their phones.</p>
+            </div>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+              <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center mb-6">
+                <Clock className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Smart Scheduling</h3>
+              <p className="text-slate-600">Send gentle reminders 3 days before, on the due date, and firmer alerts when overdue.</p>
+            </div>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Payment Tracking</h3>
+              <p className="text-slate-600">See exactly who owes you what, and track your recovered revenue in a clean dashboard.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-bold text-slate-900 mb-4">Simple, transparent pricing</h2>
+          <p className="text-slate-600 max-w-2xl mx-auto">Choose the plan that fits your business size.</p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          {/* Basic Plan */}
+          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
+            <h3 className="text-2xl font-bold text-slate-900 mb-2">Basic</h3>
+            <p className="text-slate-500 mb-6">Perfect for independent coaches and small clinics.</p>
+            <div className="mb-8">
+              <span className="text-5xl font-bold text-slate-900">$29</span>
+              <span className="text-slate-500">/month</span>
+            </div>
+            <ul className="space-y-4 mb-8 flex-1">
+              {['Up to 100 active clients', 'Automated Email Reminders', 'Basic Payment Tracking', '50 SMS Credits/mo'].map((feature, i) => (
+                <li key={i} className="flex items-center gap-3 text-slate-700">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <button className="w-full py-3 px-4 bg-slate-100 text-slate-900 font-medium rounded-xl hover:bg-slate-200 transition-colors">
+              Start 14-Day Trial
+            </button>
+          </div>
+
+          {/* Pro Plan */}
+          <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">
+              Most Popular
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
+            <p className="text-slate-400 mb-6">For growing gyms and busy medical centers.</p>
+            <div className="mb-8">
+              <span className="text-5xl font-bold text-white">$59</span>
+              <span className="text-slate-400">/month</span>
+            </div>
+            <ul className="space-y-4 mb-8 flex-1">
+              {['Unlimited clients', 'WhatsApp API Integration', 'Advanced Analytics Dashboard', '500 SMS Credits/mo', 'Custom Message Templates'].map((feature, i) => (
+                <li key={i} className="flex items-center gap-3 text-slate-300">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <button className="w-full py-3 px-4 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors">
+              Start 14-Day Trial
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
