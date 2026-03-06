@@ -1,6 +1,15 @@
 import Link from 'next/link';
 import { CheckCircle2, MessageCircle, TrendingUp, Clock, ArrowRight, Smartphone, Twitter, Linkedin, Github } from 'lucide-react';
 
+/**
+ * Render the PayRecover marketing landing page.
+ *
+ * Includes a top navigation, hero section with primary CTA, feature cards, pricing plans (Basic and Pro),
+ * and a multi-column footer. The component is purely presentational, uses Next.js Link for navigation,
+ * Tailwind CSS for styling, and lucide-react icons for visuals.
+ *
+ * @returns A React element containing the full landing page layout.
+ */
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">

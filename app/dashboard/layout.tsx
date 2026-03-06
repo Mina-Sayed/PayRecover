@@ -5,6 +5,14 @@ import { ToastProvider } from '../components/toast';
 import DashboardSearch from '../components/dashboard-search';
 import { Suspense } from 'react';
 
+/**
+ * App layout that renders a persistent sidebar, a sticky top header, and a main content area.
+ *
+ * The layout is wrapped with the toast provider so descendants can show toasts.
+ *
+ * @param children - The page content to render inside the main content area.
+ * @returns The layout element containing the sidebar, header (search, notifications, and exit link), and the provided `children`.
+ */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
