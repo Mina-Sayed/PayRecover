@@ -28,15 +28,6 @@ export async function POST(request: Request) {
       return apiError('Password must be at least 6 characters', 400, 'VALIDATION_ERROR');
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (existingUser) {
-      return apiError('Email already in use', 409, 'CONFLICT');
-    }
-
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await prisma.$transaction(async (tx) => {
@@ -91,6 +82,13 @@ export async function POST(request: Request) {
 
     return Response.json({ message: 'User created successfully', userId: user.id }, { status: 201 });
   } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      return apiError('Email already in use', 409, 'CONFLICT');
+    }
     console.error('Registration error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');
   }
