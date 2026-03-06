@@ -1,0 +1,155 @@
+'use client';
+
+import { useState } from 'react';
+import { signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { MessageCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+
+/**
+ * Renders the sign-up page with a registration form, client-side validation, and post-registration sign-in flow.
+ *
+ * The component displays fields for full name, email, and password (with visibility toggle), shows server or generic error messages, and displays a loading state during submission. On successful registration it attempts to sign the user in and navigates to the dashboard.
+ *
+ * @returns The sign-up page as a React element.
+ */
+export default function SignUpPage() {
+    const router = useRouter();
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || 'Something went wrong');
+                setLoading(false);
+                return;
+            }
+
+            // Auto sign in after registration
+            const result = await signIn('credentials', {
+                email,
+                password,
+                redirect: false,
+            });
+
+            if (result?.error) {
+                setError('Account created but sign-in failed. Please sign in manually.');
+                setLoading(false);
+            } else {
+                router.push('/dashboard');
+                router.refresh();
+            }
+        } catch {
+            setError('Something went wrong. Please try again.');
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+            <div className="w-full max-w-md">
+                {/* Logo */}
+                <div className="text-center mb-8">
+                    <Link href="/" className="inline-flex items-center gap-2 mb-6">
+                        <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
+                            <MessageCircle className="w-6 h-6 text-white" />
+                        </div>
+                        <span className="font-bold text-2xl tracking-tight">PayRecover</span>
+                    </Link>
+                    <h1 className="text-2xl font-bold text-slate-900">Create your account</h1>
+                    <p className="text-slate-500 text-sm mt-1">Start recovering your payments today</p>
+                </div>
+
+                {/* Form Card */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 animate-in fade-in duration-200">
+                                {error}
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Full Name</label>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Dr. John Doe"
+                                required
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="you@business.com"
+                                required
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Min. 6 characters"
+                                    required
+                                    minLength={6}
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all pr-10"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-emerald-500 text-white py-2.5 rounded-xl font-medium hover:bg-emerald-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {loading ? 'Creating account...' : 'Create Account'}
+                        </button>
+                    </form>
+                </div>
+
+                <p className="text-center text-sm text-slate-500 mt-6">
+                    Already have an account?{' '}
+                    <Link href="/auth/signin" className="text-emerald-600 font-medium hover:text-emerald-700">
+                        Sign in
+                    </Link>
+                </p>
+            </div>
+        </div>
+    );
+}
