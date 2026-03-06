@@ -18,11 +18,6 @@ interface Reminder {
   order: number;
 }
 
-/**
- * Renders a skeleton loading UI for the reminders section.
- *
- * @returns A React element consisting of a header-style skeleton and a bordered card containing three full-width skeleton rows.
- */
 function RemindersLoadingState() {
   return (
     <div className="space-y-6">
@@ -41,14 +36,6 @@ function RemindersLoadingState() {
   );
 }
 
-/**
- * Render the Automations page UI for managing reminder sequences for WhatsApp and SMS.
- *
- * The component loads reminders on mount, exposes controls to add, edit (timing and template),
- * toggle active/paused state, reorder and delete steps, and persist changes back to the server.
- *
- * @returns The page's React element containing the reminders list, controls for adding and saving steps, error and loading states, and a confirmation dialog for deletions.
- */
 export default function AutomationsPage() {
   const [activeTab, setActiveTab] = useState<'whatsapp' | 'sms'>('whatsapp');
   const [reminders, setReminders] = useState<Reminder[]>([]);

@@ -82,11 +82,6 @@ const emptyForm: InvoiceFormState = {
   dueDate: '',
 };
 
-/**
- * Render skeleton placeholders used while the invoices list is loading.
- *
- * @returns A JSX element containing the loading skeleton UI for the invoices list.
- */
 function InvoicesLoadingState() {
   return (
     <div className="space-y-6">
@@ -112,13 +107,6 @@ function InvoicesLoadingState() {
   );
 }
 
-/**
- * Render the client-side invoices management UI including list display, searching, filtering, pagination, and create/edit/delete flows.
- *
- * The component manages loading state, API interactions (fetch, create, update, delete), toast notifications, modal dialogs for create/edit, expandable invoice rows with details, and URL synchronization for search. It also protects against out-of-order list responses using a request-versioning mechanism.
- *
- * @returns The invoices management UI as a React element.
- */
 function InvoicesPageClient() {
   const pathname = usePathname();
   const router = useRouter();
@@ -935,11 +923,6 @@ function InvoicesPageClient() {
   );
 }
 
-/**
- * Wraps the invoices client component in a React Suspense boundary that shows a loading state while the client component is suspended.
- *
- * @returns The page element rendering `InvoicesPageClient` inside `Suspense` with `InvoicesLoadingState` as the fallback.
- */
 export default function InvoicesPage() {
   return (
     <Suspense fallback={<InvoicesLoadingState />}>

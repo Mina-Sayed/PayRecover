@@ -26,24 +26,12 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | null>(null);
 
-/**
- * Accesses the toast context provided by ToastProvider to interact with the toast system.
- *
- * @returns The toast context object exposing `addToast(message, type?)` to enqueue toasts.
- * @throws Error if called outside of a `ToastProvider`.
- */
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) throw new Error('useToast must be used within ToastProvider');
   return context;
 }
 
-/**
- * Provides a Toast context and renders toast notifications with automatic (4s) and manual dismissal.
- *
- * @param children - The React nodes that will be wrapped by the provider.
- * @returns A React element that supplies `addToast(message, type?)` via context and displays the toast UI.
- */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});

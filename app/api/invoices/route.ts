@@ -54,20 +54,6 @@ interface InvoiceMutationClient {
   };
 }
 
-/**
- * Creates or updates a client, allocates a unique invoice number, creates the invoice and an initial `invoice_created` event, and returns the created invoice with its client and recent events.
- *
- * @param userId - ID of the user who owns the invoice
- * @param clientName - Client's display name
- * @param phone - Client's phone number used to look up or match an existing client
- * @param email - Client's email address
- * @param address - Client's postal address (may be empty)
- * @param amount - Invoice amount in the application's smallest currency unit
- * @param dueDate - Invoice due date (ISO date string or Date)
- * @returns The created invoice record including its `client` relation and the most recent five `events`
- * @throws Error when the created invoice cannot be reloaded after creation
- * @throws Error when a unique invoice number cannot be allocated after multiple attempts
- */
 async function createInvoiceWithClientAndEvent({
   userId,
   clientName,
@@ -167,13 +153,6 @@ async function createInvoiceWithClientAndEvent({
   throw new Error('Unable to allocate a unique invoice number');
 }
 
-/**
- * Update an invoice's status, record a corresponding invoice event when the status changes, and return the refreshed invoice with its client and recent events.
- *
- * Updates the invoice's `status` and sets `paidAt` to the current time when marked `paid`. If the effective status differs from `currentStatus`, creates an `invoiceEvent` of type `invoice_marked_paid` or `invoice_status_recalculated` with a formatted message.
- *
- * @returns The updated invoice including its `client` relation and the most recent five `events`, or `null` if no matching invoice is found.
- */
 async function updateInvoiceStatusWithEvent(
   tx: InvoiceMutationClient,
   args: {
@@ -223,18 +202,6 @@ async function updateInvoiceStatusWithEvent(
   });
 }
 
-/**
- * Lists invoices for the authenticated user, supporting status filtering, search, and pagination.
- *
- * Synchronizes open invoice statuses for the user before querying. Reads query parameters from the
- * request URL: `status` (one of allowed filters or `all`), `search` (searches client name, invoiceNo,
- * and client email), `page`, and `limit` (maximum 50). Returns a paginated list of invoices including
- * each invoice's client and up to the latest 5 events.
- *
- * @param request - The incoming HTTP Request whose URL query parameters control filtering and pagination.
- * @returns A Response containing a JSON object with `invoices` (array), `total` (number of matched invoices),
- * `page` (current page), and `totalPages` (number of pages), or an error response with an appropriate HTTP status.
- */
 export async function GET(request: Request) {
   try {
     const session = await auth();
@@ -303,12 +270,6 @@ export async function GET(request: Request) {
   }
 }
 
-/**
- * Creates a new invoice (creating or updating the client as needed) from the JSON request body and returns the created invoice.
- *
- * @param request - HTTP Request whose JSON body must include `clientName`, `phone`, `email`, `amount`, and `dueDate`; `address` is optional
- * @returns The created invoice record including its client and recent invoice events; returned with HTTP 201 on success
- */
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -350,14 +311,6 @@ export async function POST(request: Request) {
   }
 }
 
-/**
- * HTTP PATCH handler that updates an invoice's status and records the corresponding invoice event.
- *
- * Validates the authenticated session and request body (expects `id` and `status`), updates the invoice status within a transaction (creating an event when the status changes), and returns the updated invoice with its client and recent events.
- *
- * @param request - The incoming Request whose JSON body must contain `id` (invoice id) and `status` (new invoice status).
- * @returns A Response containing the updated invoice (including its client and recent events) on success; otherwise an error response with an appropriate HTTP status and error code.
- */
 export async function PATCH(request: Request) {
   try {
     const session = await auth();

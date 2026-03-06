@@ -10,12 +10,6 @@ export const metadata: Metadata = {
   description: 'Automated WhatsApp & SMS payment reminders for clinics, gyms, and coaches.',
 };
 
-/**
- * Root layout component that provides the application's HTML scaffold and authentication context.
- *
- * @param children - The page content to render inside the layout.
- * @returns The root `<html>` element containing the application UI.
- */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>

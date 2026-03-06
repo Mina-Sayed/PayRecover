@@ -32,14 +32,6 @@ interface SettingsForm {
   whatsappNumber: string;
 }
 
-/**
- * Renders skeleton placeholders for the settings page while settings data is loading.
- *
- * Produces a header placeholder, a left sidebar with three row placeholders, and a main content panel
- * with several form-row placeholders to match the page's two-column layout.
- *
- * @returns A JSX element containing skeleton blocks for the page loading state.
- */
 function SettingsLoadingState() {
   return (
     <div className="space-y-6">
@@ -66,15 +58,6 @@ function SettingsLoadingState() {
   );
 }
 
-/**
- * Render the settings page UI with tabs for business profile, integrations, and notifications.
- *
- * Handles loading and saving profile settings via the /api/settings endpoint, manages editable
- * form state with dirty detection, presents loading and error states, and stores local
- * notification preferences. Uses toasts for user feedback and animated transitions between tabs.
- *
- * @returns The Settings page React element.
- */
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [profile, setProfile] = useState<SettingsResponse | null>(null);

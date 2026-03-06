@@ -5,12 +5,6 @@ export type InvoiceEventType =
   | 'invoice_marked_paid'
   | 'invoice_status_recalculated';
 
-/**
- * Create a human-readable message for an invoice event.
- *
- * @param details - Optional custom message that, when provided, overrides the default message for the given `type`
- * @returns The message corresponding to `type`, or `details` if provided
- */
 export function formatInvoiceEventMessage(
   type: InvoiceEventType,
   details?: string

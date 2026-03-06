@@ -9,11 +9,6 @@ interface SettingsBody {
   name?: unknown;
 }
 
-/**
- * Fetches the authenticated user's settings.
- *
- * @returns An HTTP Response containing the user's settings (`name`, `email`, `businessName`, `whatsappNumber`, `plan`), or an API error response with status codes 401 (Unauthorized), 404 (User not found), or 500 (Internal server error).
- */
 export async function GET() {
   try {
     const session = await auth();
@@ -43,16 +38,6 @@ export async function GET() {
   }
 }
 
-/**
- * Updates the authenticated user's settings (name, businessName, whatsappNumber).
- *
- * Accepts a JSON body with optional fields `name`, `businessName`, and `whatsappNumber`.
- * Each field may be omitted to leave it unchanged, may be a string to set or empty-string to set to `null`, and non-string values are rejected.
- * Requires an authenticated session; returns appropriate API error responses for unauthorized access, validation failures, and server errors.
- *
- * @param request - The incoming HTTP request with a JSON body matching the settings payload
- * @returns The updated user object containing `name`, `email`, `businessName`, `whatsappNumber`, and `plan`
- */
 export async function PUT(request: Request) {
   try {
     const session = await auth();

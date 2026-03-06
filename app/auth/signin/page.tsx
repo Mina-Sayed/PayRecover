@@ -6,15 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 
-/**
- * Render the PayRecover sign-in page with a credential-based login form.
- *
- * The component displays email and password inputs, a password visibility toggle,
- * inline error messaging on authentication failure, and a loading state while signing in.
- * On successful authentication the page navigates to `/dashboard`.
- *
- * @returns The JSX element for the sign-in page UI.
- */
 export default function SignInPage() {
     const router = useRouter();
     const [email, setEmail] = useState('');

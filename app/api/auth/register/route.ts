@@ -9,14 +9,6 @@ interface RegisterBody {
   password?: unknown;
 }
 
-/**
- * Handle user registration by validating the request, creating a new user, and seeding default reminder templates.
- *
- * Validates `name`, `email`, and `password` from the JSON body, enforces a minimum password length, ensures email uniqueness,
- * hashes the password, creates the user inside a database transaction, and inserts initial reminder templates for the user.
- *
- * @returns A `Response` containing `{ message: 'User created successfully', userId }` with status `201` on success; on failure returns an error `Response` with an appropriate status and error code (e.g., validation errors `400`, conflict `409`, or internal error `500`).
- */
 export async function POST(request: Request) {
   try {
     const body = await readJsonBody<RegisterBody>(request);
@@ -34,15 +26,6 @@ export async function POST(request: Request) {
 
     if (password.length < 6) {
       return apiError('Password must be at least 6 characters', 400, 'VALIDATION_ERROR');
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (existingUser) {
-      return apiError('Email already in use', 409, 'CONFLICT');
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -99,6 +82,13 @@ export async function POST(request: Request) {
 
     return Response.json({ message: 'User created successfully', userId: user.id }, { status: 201 });
   } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      return apiError('Email already in use', 409, 'CONFLICT');
+    }
     console.error('Registration error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');
   }

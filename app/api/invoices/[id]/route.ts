@@ -23,13 +23,6 @@ interface UpdateInvoiceBody {
   email?: unknown;
 }
 
-/**
- * Handle PATCH requests to update an invoice and optionally its client, persist changes in a transaction, and record invoice events.
- *
- * Performs input validation, computes derived status and paidAt when applicable, updates client fields if provided, creates corresponding invoice events, reloads the refreshed invoice with its client and recent events, and returns the updated invoice.
- *
- * @returns A Response containing the refreshed invoice as JSON on success; returns an error response (e.g., 400, 401, 404, 500) with an error message and code on failure.
- */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -228,12 +221,6 @@ export async function PATCH(
   }
 }
 
-/**
- * Deletes the invoice identified by the route `id` for the authenticated user.
- *
- * @param params - Promise resolving to route parameters containing the invoice `id`
- * @returns `Response` with `{ message: 'Invoice deleted' }` on success; otherwise an error response with status `401` (unauthorized), `404` (not found), or `500` (internal server error)
- */
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

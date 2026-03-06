@@ -13,13 +13,6 @@ const navItems = [
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, section: 'System' },
 ];
 
-/**
- * Render a responsive navigation sidebar with grouped menu items, a logo, user profile, and a sign-out control.
- *
- * Displays a persistent sidebar on desktop and a toggleable sliding drawer on mobile, highlights the active route based on the current pathname, and shows user name/email and initials from the NextAuth session.
- *
- * @returns The sidebar JSX element containing the logo, navigation groups ("Menu" and "System"), and user profile actions including sign-out.
- */
 export default function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);

@@ -37,14 +37,6 @@ interface DashboardStatsResponse {
   recentInvoices: DashboardInvoice[];
 }
 
-/**
- * Render skeleton placeholders for the dashboard overview while data is loading.
- *
- * Renders placeholder elements for the page header, four stat cards, a recovery snapshot panel,
- * and a recent invoices list to preserve layout and provide visual loading feedback.
- *
- * @returns A JSX element containing the dashboard skeleton layout
- */
 function DashboardLoadingState() {
   return (
     <div className="space-y-6">
@@ -78,13 +70,6 @@ function DashboardLoadingState() {
   );
 }
 
-/**
- * Render the dashboard overview UI that loads and displays recovery statistics, a recovery snapshot, and recent outstanding invoices.
- *
- * Fetches dashboard statistics from the API, shows a loading skeleton while fetching, displays an error panel with retry on failure, and renders data-driven stat cards, snapshot panels, and a recent invoices list when available.
- *
- * @returns A React element rendering the dashboard overview based on fetched dashboard statistics.
- */
 export default function DashboardOverview() {
   const [data, setData] = useState<DashboardStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);

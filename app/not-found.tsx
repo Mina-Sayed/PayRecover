@@ -1,14 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, Search } from 'lucide-react';
 
-/**
- * Renders a styled "Page not found" (404) view with primary actions to go back home or to the dashboard.
- *
- * The component displays a large "404" graphic with an overlaid search icon, a heading, explanatory text,
- * and two call-to-action links: "Back to Home" ("/") and "Go to Dashboard" ("/dashboard").
- *
- * @returns The JSX element for the 404 page layout.
- */
 export default function NotFound() {
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">

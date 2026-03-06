@@ -16,11 +16,6 @@ interface ReminderInput {
   order?: unknown;
 }
 
-/**
- * Fetches all reminder templates belonging to the authenticated user.
- *
- * @returns The user's reminder templates ordered by `channel` ascending then `order` ascending.
- */
 export async function GET() {
   try {
     const session = await auth();
@@ -41,16 +36,6 @@ export async function GET() {
   }
 }
 
-/**
- * Create a new reminder template for the authenticated user.
- *
- * Accepts reminder data in the request JSON, applies sensible defaults for missing
- * fields, assigns the next order within the chosen channel, and persists the new
- * reminder scoped to the authenticated user.
- *
- * @param request - Incoming HTTP request containing reminder fields in the JSON body
- * @returns The created reminder template record
- */
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -93,14 +78,6 @@ export async function POST(request: Request) {
   }
 }
 
-/**
- * Update multiple reminder templates for the authenticated user.
- *
- * Accepts a JSON body with a `reminders` array where each item must include `id`, `timing`, and `template`. Optional fields: `active` (boolean, defaults to `true`) and `order` (number, defaults to the item's index). Only reminders that belong to the authenticated user are updated.
- *
- * @param request - HTTP request whose JSON body contains the `reminders` array of reminder objects
- * @returns A JSON response with a confirmation message when updates succeed.
- */
 export async function PUT(request: Request) {
   try {
     const session = await auth();
@@ -159,15 +136,6 @@ export async function PUT(request: Request) {
   }
 }
 
-/**
- * Delete a reminder template belonging to the authenticated user identified by the `id` query parameter.
- *
- * Reads the `id` from the request URL search parameters, validates presence, and removes any matching
- * reminder template scoped to the authenticated user's ID.
- *
- * @param request - Incoming HTTP request; the reminder `id` must be provided as a URL `id` search parameter
- * @returns An HTTP Response with JSON `{ message: 'Reminder deleted' }` on success or an error response on failure
- */
 export async function DELETE(request: Request) {
   try {
     const session = await auth();

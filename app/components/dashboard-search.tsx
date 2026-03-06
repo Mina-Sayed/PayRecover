@@ -8,14 +8,6 @@ import { buildInvoiceSearchNavigation, readInvoiceSearchParam } from '@/lib/invo
 
 const INVOICES_PATH = '/dashboard/invoices';
 
-/**
- * Renders a dashboard search form for querying clients or invoices.
- *
- * The input is initialized from and kept in sync with the current URL search parameters.
- * Submitting the form navigates to the invoices route with the current query applied.
- *
- * @returns A JSX element containing the responsive search form and submit button.
- */
 export default function DashboardSearch() {
   const pathname = usePathname();
   const router = useRouter();

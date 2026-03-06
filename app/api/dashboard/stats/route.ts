@@ -3,20 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
 import { syncOpenInvoiceStatuses } from '@/lib/invoice-status';
 
-/**
- * Provide dashboard statistics for the authenticated user.
- *
- * Returns a JSON response containing aggregated invoice and reminder metrics for the current user.
- * Also returns a 401 response when there is no authenticated user.
- *
- * @returns A Response whose JSON contains:
- * - `totalOutstanding` — total outstanding amount for invoices with status `overdue` or `pending` (number)
- * - `overdueCount` — count of invoices with status `overdue` or `pending` (number)
- * - `recoveredThisMonth` — total amount recovered from invoices marked `paid` since the start of the current month (number)
- * - `activeReminders` — count of active reminder templates for the user (number)
- * - `totalInvoices` — total invoice count for the user (number)
- * - `recentInvoices` — up to 5 invoices with status `overdue` or `pending`, including each invoice's `client` relation (array)
- */
 export async function GET() {
   try {
     const session = await auth();

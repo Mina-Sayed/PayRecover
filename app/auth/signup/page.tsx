@@ -6,13 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 
-/**
- * Renders the sign-up page with a registration form, client-side validation, and post-registration sign-in flow.
- *
- * The component displays fields for full name, email, and password (with visibility toggle), shows server or generic error messages, and displays a loading state during submission. On successful registration it attempts to sign the user in and navigates to the dashboard.
- *
- * @returns The sign-up page as a React element.
- */
 export default function SignUpPage() {
     const router = useRouter();
     const [name, setName] = useState('');

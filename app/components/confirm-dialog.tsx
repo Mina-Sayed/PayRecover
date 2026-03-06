@@ -13,19 +13,6 @@ interface ConfirmDialogProps {
     onCancel: () => void;
 }
 
-/**
- * Render a centered confirmation modal with title, message, and Cancel/Confirm actions.
- *
- * @param isOpen - Whether the dialog is visible
- * @param title - Main heading displayed at the top of the dialog
- * @param message - Supporting text describing the action being confirmed
- * @param confirmLabel - Text for the confirm button (defaults to `"Confirm"`)
- * @param cancelLabel - Text for the cancel button (defaults to `"Cancel"`)
- * @param variant - Visual variant of the dialog; `"danger"` shows a red accent, `"default"` shows a neutral/green accent
- * @param onConfirm - Callback invoked when the confirm button is clicked
- * @param onCancel - Callback invoked when the cancel button is clicked
- * @returns A JSX element representing the modal when `isOpen` is true, or `null` when `isOpen` is false
- */
 export default function ConfirmDialog({
     isOpen,
     title,
