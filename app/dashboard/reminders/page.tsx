@@ -14,6 +14,7 @@ interface Reminder {
   channel: 'whatsapp' | 'sms';
   timing: string;
   template: string;
+  providerTemplateName: string | null;
   active: boolean;
   order: number;
 }
@@ -94,6 +95,7 @@ export default function AutomationsPage() {
           timing: '3 Days Before Due',
           template:
             'Hi {{client_name}}, you have an outstanding invoice of {{amount}}. Pay here: {{payment_link}}',
+          providerTemplateName: '',
         }),
       });
       setReminders((prev) => [...prev, reminder]);
@@ -129,6 +131,7 @@ export default function AutomationsPage() {
         id: reminder.id,
         timing: reminder.timing,
         template: reminder.template,
+        providerTemplateName: reminder.providerTemplateName,
         active: reminder.active,
         order: reminder.order,
       }));
@@ -147,6 +150,7 @@ export default function AutomationsPage() {
             ...reminder,
             timing: next.timing,
             template: next.template,
+            providerTemplateName: next.providerTemplateName ?? null,
             active: next.active,
             order: next.order,
           };
@@ -177,6 +181,11 @@ export default function AutomationsPage() {
         <p className="text-slate-500 text-sm mt-1">
           Configure your automated reminder schedules and message templates.
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+        Live dispatch is currently wired for WhatsApp only. SMS templates remain stored for planning,
+        and WhatsApp reminder steps need a matching WATI template name before the scheduler can send them.
       </div>
 
       {error && (
@@ -310,6 +319,34 @@ export default function AutomationsPage() {
                       <span className="text-emerald-600">{'{{payment_link}}'}</span>
                     </div>
                   </div>
+
+                  {activeTab === 'whatsapp' && (
+                    <div className="space-y-2 mt-4">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        WATI Template Name
+                      </label>
+                      <input
+                        type="text"
+                        value={reminder.providerTemplateName || ''}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setReminders((prev) =>
+                            prev.map((item) =>
+                              item.id === reminder.id
+                                ? { ...item, providerTemplateName: value.trim() || null }
+                                : item
+                            )
+                          );
+                        }}
+                        placeholder="approved_wati_template_name"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                      <p className="text-xs text-slate-500">
+                        The rendered message above stays your internal template copy. The WATI template
+                        name controls live WhatsApp delivery.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}

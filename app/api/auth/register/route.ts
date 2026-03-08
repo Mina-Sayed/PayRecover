@@ -46,6 +46,7 @@ export async function POST(request: Request) {
             userId: createdUser.id,
             channel: 'whatsapp',
             timing: '3 Days Before Due',
+            providerTemplateName: null,
             template:
               'Hi {{client_name}}, this is a gentle reminder that your invoice for {{amount}} is due on {{due_date}}. You can pay securely here: {{payment_link}}',
             order: 0,
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
             userId: createdUser.id,
             channel: 'whatsapp',
             timing: 'On Due Date',
+            providerTemplateName: null,
             template:
               'Hi {{client_name}}, your invoice for {{amount}} is due today. Please complete your payment here: {{payment_link}}',
             order: 1,
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
             userId: createdUser.id,
             channel: 'sms',
             timing: '1 Day Overdue',
+            providerTemplateName: null,
             template:
               'Reminder: Your payment of {{amount}} is overdue. Pay now: {{payment_link}}',
             order: 0,
@@ -70,6 +73,7 @@ export async function POST(request: Request) {
             userId: createdUser.id,
             channel: 'sms',
             timing: '7 Days Overdue',
+            providerTemplateName: null,
             template:
               'URGENT: Your invoice of {{amount}} is 7 days overdue. Please pay immediately to avoid service interruption: {{payment_link}}',
             order: 1,

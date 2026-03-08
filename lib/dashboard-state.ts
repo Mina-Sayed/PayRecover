@@ -2,6 +2,7 @@ export interface ReminderDraft {
   id: string;
   timing: string;
   template: string;
+  providerTemplateName: string | null;
   active: boolean;
   order: number;
   channel: 'whatsapp' | 'sms';
@@ -60,7 +61,7 @@ export function applyInvoiceStatusUpdate(
 export function updateReminderDraft(
   reminders: ReminderDraft[],
   reminderId: string,
-  patch: Partial<Pick<ReminderDraft, 'timing' | 'template' | 'active'>>
+  patch: Partial<Pick<ReminderDraft, 'timing' | 'template' | 'providerTemplateName' | 'active'>>
 ): ReminderDraft[] {
   return reminders.map((reminder) =>
     reminder.id === reminderId ? { ...reminder, ...patch } : reminder

@@ -6,7 +6,6 @@ import {
   Plus,
   Search,
   MoreHorizontal,
-  Download,
   Mail,
   MessageCircle,
   ChevronDown,
@@ -17,6 +16,8 @@ import {
   Pencil,
   Trash2,
   RefreshCw,
+  CreditCard,
+  ExternalLink,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useToast } from '../../components/toast';
@@ -48,6 +49,12 @@ interface Invoice {
   dueDate: string;
   status: 'pending' | 'overdue' | 'paid';
   notes: string | null;
+  paymentLink: {
+    provider: string;
+    status: string;
+    url: string;
+    expiresAt: string | null;
+  } | null;
   client: InvoiceClient;
   events: Array<{
     id: string;
@@ -277,6 +284,36 @@ function InvoicesPageClient() {
     }
   };
 
+  const handleRefreshPaymentLink = async (invoice: Invoice) => {
+    try {
+      const response = await apiFetch<{
+        paymentLink: Invoice['paymentLink'];
+      }>(`/api/invoices/${invoice.id}/payment-link`, {
+        method: 'POST',
+      });
+
+      setInvoices((prev) =>
+        prev.map((item) =>
+          item.id === invoice.id
+            ? {
+                ...item,
+                paymentLink: response.paymentLink,
+              }
+            : item
+        )
+      );
+      addToast(
+        response.paymentLink
+          ? `Payment link ready for ${invoice.invoiceNo}`
+          : `No payment link available for ${invoice.invoiceNo}`,
+        response.paymentLink ? 'success' : 'info'
+      );
+      setActionsOpenId(null);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to refresh payment link', 'error');
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
 
@@ -332,7 +369,9 @@ function InvoicesPageClient() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Clients & Invoices</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage your subscriptions, clients, and payment statuses.</p>
+          <p className="text-slate-500 text-sm mt-1">
+            Manage invoice records, client details, and payment-link readiness.
+          </p>
         </div>
         <button
           onClick={openCreateModal}
@@ -498,25 +537,24 @@ function InvoicesPageClient() {
                                   Edit Invoice
                                 </button>
                                 <button
-                                  type="button"
-                                  disabled
-                                  aria-disabled
-                                  title="Coming soon"
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-400 bg-slate-50 cursor-not-allowed"
-                                >
-                                  <MessageCircle className="w-4 h-4" />
-                                  WhatsApp Delivery (Coming soon)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    addToast('PDF generation will be enabled in next phase', 'info');
-                                    setActionsOpenId(null);
-                                  }}
+                                  onClick={() => handleRefreshPaymentLink(invoice)}
                                   className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                                 >
-                                  <Download className="w-4 h-4" />
-                                  Download PDF
+                                  <CreditCard className="w-4 h-4" />
+                                  {invoice.paymentLink ? 'Refresh Payment Link' : 'Create Payment Link'}
                                 </button>
+                                {invoice.paymentLink && (
+                                  <button
+                                    onClick={() => {
+                                      window.open(invoice.paymentLink?.url, '_blank', 'noopener,noreferrer');
+                                      setActionsOpenId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                    Open Payment Link
+                                  </button>
+                                )}
                                 <div className="border-t border-slate-100 my-1" />
                                 <button
                                   onClick={() => {
@@ -558,6 +596,39 @@ function InvoicesPageClient() {
                                   <div className="flex items-center gap-3 text-sm text-slate-600">
                                     <MapPin className="w-4 h-4 text-slate-400" />
                                     {invoice.client.address || 'No address'}
+                                  </div>
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                      Payment Link
+                                    </p>
+                                    {invoice.paymentLink ? (
+                                      <div className="mt-2 space-y-2">
+                                        <p className="text-sm font-medium text-slate-900 capitalize">
+                                          {invoice.paymentLink.status} via {invoice.paymentLink.provider}
+                                        </p>
+                                        <a
+                                          href={invoice.paymentLink.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs text-emerald-700 hover:text-emerald-800 break-all"
+                                        >
+                                          {invoice.paymentLink.url}
+                                        </a>
+                                      </div>
+                                    ) : (
+                                      <div className="mt-2">
+                                        <p className="text-sm text-slate-500">
+                                          No live payment link has been created yet.
+                                        </p>
+                                        <button
+                                          onClick={() => handleRefreshPaymentLink(invoice)}
+                                          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                        >
+                                          <CreditCard className="w-4 h-4" />
+                                          Create Payment Link
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -789,7 +860,7 @@ function InvoicesPageClient() {
                     disabled={saving}
                     className="flex-1 px-4 py-2 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-60"
                   >
-                    {saving ? 'Creating...' : 'Create & Send'}
+                    {saving ? 'Creating...' : 'Create Invoice'}
                   </button>
                 </div>
               </form>

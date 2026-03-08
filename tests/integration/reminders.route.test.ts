@@ -68,6 +68,7 @@ describe('/api/reminders route handlers', () => {
       data: {
         timing: '1 Day Overdue',
         template: 'Pay now',
+        providerTemplateName: null,
         active: true,
         order: 0,
       },

@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
 import {
+  asOptionalTrimmedString,
   asTrimmedString,
   isRecord,
   isReminderChannel,
@@ -12,6 +13,7 @@ interface ReminderInput {
   channel?: unknown;
   timing?: unknown;
   template?: unknown;
+  providerTemplateName?: unknown;
   active?: unknown;
   order?: unknown;
 }
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
     const template =
       asTrimmedString(body.template) ||
       'Hi {{client_name}}, you have an outstanding invoice of {{amount}}. Pay here: {{payment_link}}';
+    const providerTemplateName = asOptionalTrimmedString(body.providerTemplateName);
 
     const lastReminder = await prisma.reminderTemplate.findFirst({
       where: { userId, channel },
@@ -67,6 +70,7 @@ export async function POST(request: Request) {
         channel,
         timing,
         template,
+        providerTemplateName,
         order: (lastReminder?.order ?? -1) + 1,
       },
     });
@@ -99,6 +103,7 @@ export async function PUT(request: Request) {
       const id = asTrimmedString(rawReminder.id);
       const timing = asTrimmedString(rawReminder.timing);
       const template = asTrimmedString(rawReminder.template);
+      const providerTemplateName = asOptionalTrimmedString(rawReminder.providerTemplateName);
       const active = typeof rawReminder.active === 'boolean' ? rawReminder.active : true;
       const order = Number.isFinite(Number(rawReminder.order))
         ? Number(rawReminder.order)
@@ -108,7 +113,7 @@ export async function PUT(request: Request) {
         throw new Error('Missing required reminder fields');
       }
 
-      return { id, timing, template, active, order };
+      return { id, timing, template, providerTemplateName, active, order };
     });
 
     await Promise.all(
@@ -118,6 +123,7 @@ export async function PUT(request: Request) {
           data: {
             timing: reminder.timing,
             template: reminder.template,
+            providerTemplateName: reminder.providerTemplateName,
             active: reminder.active,
             order: reminder.order,
           },

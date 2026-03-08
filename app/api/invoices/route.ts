@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PaymentLinkStatus, Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
@@ -14,6 +14,9 @@ import { getNextInvoiceNumber, isInvoiceNumberConflict } from '@/lib/invoice-seq
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
 import { getDerivedOpenInvoiceStatus, syncOpenInvoiceStatuses } from '@/lib/invoice-status';
 import { clampInvoiceListPage, getInvoiceListTotalPages } from '@/lib/invoice-list-state';
+import { serializeInvoice } from '@/lib/invoice-serialization';
+import { ensureInvoiceOperationalArtifacts } from '@/lib/recovery-loop';
+import { toDecimal } from '@/lib/money';
 
 interface CreateInvoiceBody {
   clientName?: unknown;
@@ -37,6 +40,22 @@ interface CreateInvoiceInput {
   dueDate: Date;
 }
 
+const invoiceInclude: Prisma.InvoiceInclude = {
+  client: true,
+  events: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 5,
+  },
+  paymentLinks: {
+    where: {
+      provider: 'paymob',
+      status: { in: [PaymentLinkStatus.active, PaymentLinkStatus.paid] },
+    },
+    orderBy: [{ status: 'asc' as const }, { createdAt: 'desc' as const }],
+    take: 1,
+  },
+};
+
 interface InvoiceMutationClient {
   client: {
     findFirst: typeof prisma.client.findFirst;
@@ -51,6 +70,12 @@ interface InvoiceMutationClient {
   };
   invoiceEvent: {
     create: typeof prisma.invoiceEvent.create;
+  };
+  paymentEvent: {
+    create: typeof prisma.paymentEvent.create;
+  };
+  reminderRun: {
+    updateMany: typeof prisma.reminderRun.updateMany;
   };
 }
 
@@ -106,7 +131,7 @@ async function createInvoiceWithClientAndEvent({
             invoiceNo,
             clientId: client.id,
             userId,
-            amount,
+            amount: toDecimal(amount),
             dueDate,
             status,
           },
@@ -126,13 +151,7 @@ async function createInvoiceWithClientAndEvent({
 
         const createdInvoice = await tx.invoice.findFirst({
           where: { id: invoice.id, userId },
-          include: {
-            client: true,
-            events: {
-              orderBy: { createdAt: 'desc' },
-              take: 5,
-            },
-          },
+          include: invoiceInclude,
         });
 
         if (!createdInvoice) {
@@ -175,6 +194,35 @@ async function updateInvoiceStatusWithEvent(
   });
 
   if (effectiveStatus !== args.currentStatus) {
+    if (effectiveStatus === 'paid') {
+      await tx.paymentEvent.create({
+        data: {
+          invoiceId: updated.id,
+          userId: args.userId,
+          provider: 'manual',
+          providerEventId: `manual-${updated.id}-${Date.now()}`,
+          type: 'manual_mark_paid',
+          amount: updated.amount,
+          currency: updated.currency,
+          rawPayload: {
+            source: 'dashboard_bulk_patch',
+          },
+        },
+      });
+
+      await tx.reminderRun.updateMany({
+        where: {
+          invoiceId: updated.id,
+          userId: args.userId,
+          status: { in: ['scheduled', 'sending', 'failed'] },
+        },
+        data: {
+          status: 'suppressed',
+          suppressionReason: `Reminders suppressed after manual payment for ${updated.invoiceNo}`,
+        },
+      });
+    }
+
     await tx.invoiceEvent.create({
       data: {
         invoiceId: updated.id,
@@ -192,13 +240,7 @@ async function updateInvoiceStatusWithEvent(
 
   return tx.invoice.findFirst({
     where: { id: args.id, userId: args.userId },
-    include: {
-      client: true,
-      events: {
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-      },
-    },
+    include: invoiceInclude,
   });
 }
 
@@ -246,20 +288,14 @@ export async function GET(request: Request) {
     const effectivePage = clampInvoiceListPage(page, totalPages);
     const invoices = await prisma.invoice.findMany({
       where,
-      include: {
-        client: true,
-        events: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        },
-      },
+      include: invoiceInclude,
       orderBy: { createdAt: 'desc' },
       skip: (effectivePage - 1) * limit,
       take: limit,
     });
 
     return Response.json({
-      invoices,
+      invoices: invoices.map(serializeInvoice),
       total,
       page: effectivePage,
       totalPages,
@@ -304,7 +340,14 @@ export async function POST(request: Request) {
       dueDate,
     });
 
-    return Response.json(invoice, { status: 201 });
+    await ensureInvoiceOperationalArtifacts(prisma, invoice.id);
+
+    const hydratedInvoice = await prisma.invoice.findFirst({
+      where: { id: invoice.id, userId },
+      include: invoiceInclude,
+    });
+
+    return Response.json(serializeInvoice(hydratedInvoice ?? invoice), { status: 201 });
   } catch (error) {
     console.error('Create invoice error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');
@@ -361,7 +404,7 @@ export async function PATCH(request: Request) {
       })
     );
 
-    return Response.json(updated);
+    return Response.json(updated ? serializeInvoice(updated) : null);
   } catch (error) {
     console.error('Bulk invoice patch error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

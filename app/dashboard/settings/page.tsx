@@ -305,8 +305,8 @@ export default function SettingsPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">Provider Connections</h3>
                     <p className="text-sm text-slate-500">
-                      The next rollout is locked to Paymob for payments and WATI for WhatsApp
-                      delivery.
+                      These provider choices are locked for the first live rollout, but the
+                      onboarding and credential health checks are still backend-driven work.
                     </p>
                   </div>
 
@@ -326,8 +326,8 @@ export default function SettingsPage() {
                               <p className="text-xs text-slate-500">{provider.headline}</p>
                             </div>
                           </div>
-                          <span className="text-xs font-medium px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">
-                            {provider.rolloutStatus === 'selected' ? 'Selected' : 'Deferred'}
+                          <span className="text-xs font-medium px-2 py-1 rounded-md bg-amber-100 text-amber-700">
+                            Planned
                           </span>
                         </div>
 
@@ -356,10 +356,11 @@ export default function SettingsPage() {
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
                     <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div>
-                      <h5 className="text-sm font-medium text-blue-900">Secure by default</h5>
+                      <h5 className="text-sm font-medium text-blue-900">Current state</h5>
                       <p className="text-xs text-blue-700 mt-1">
-                        Paymob secrets and WATI tokens stay server-side, and both provider webhook
-                        paths will require signature validation before going live.
+                        Paymob secrets and WATI tokens stay server-side. Provider onboarding,
+                        credential validation, and webhook trust checks are handled by backend routes,
+                        not by this settings screen yet.
                       </p>
                     </div>
                   </div>

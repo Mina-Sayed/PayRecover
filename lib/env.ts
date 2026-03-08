@@ -14,6 +14,15 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+export function getEnv(name: string): string | null {
+  const value = process.env[name];
+  if (!value || value.trim() === '') {
+    return null;
+  }
+
+  return value;
+}
+
 export function validateRequiredEnvVars(names: string[]): void {
   for (const name of names) {
     requireEnv(name);
