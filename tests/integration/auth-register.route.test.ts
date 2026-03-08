@@ -13,9 +13,6 @@ async function loadRegisterRoute() {
     },
   };
   const prismaMock = {
-    user: {
-      findUnique: vi.fn(),
-    },
     $transaction: vi.fn(),
   };
 
@@ -38,7 +35,6 @@ describe('POST /api/auth/register', () => {
   it('creates a user and default reminder templates', async () => {
     const { route, hashMock, prismaMock, transactionClient } = await loadRegisterRoute();
     hashMock.mockResolvedValue('hashed-password');
-    prismaMock.user.findUnique.mockResolvedValue(null);
     transactionClient.user.create.mockResolvedValue({ id: 'user-1' });
     transactionClient.reminderTemplate.createMany.mockResolvedValue({ count: 4 });
 
@@ -61,10 +57,6 @@ describe('POST /api/auth/register', () => {
       userId: 'user-1',
     });
 
-    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
-      where: { email: 'mina@example.com' },
-      select: { id: true },
-    });
     expect(hashMock).toHaveBeenCalledWith('secret123', 12);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(transactionClient.user.create).toHaveBeenCalledTimes(1);
@@ -73,7 +65,7 @@ describe('POST /api/auth/register', () => {
 
   it('rejects duplicate email addresses', async () => {
     const { route, prismaMock } = await loadRegisterRoute();
-    prismaMock.user.findUnique.mockResolvedValue({ id: 'existing-user' });
+    prismaMock.$transaction.mockRejectedValue({ code: 'P2002' });
 
     const request = new Request('http://localhost/api/auth/register', {
       method: 'POST',
@@ -93,14 +85,13 @@ describe('POST /api/auth/register', () => {
       error: 'Email already in use',
       code: 'CONFLICT',
     });
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('returns 500 when reminder template bootstrap fails inside the transaction', async () => {
     const { route, hashMock, prismaMock, transactionClient } = await loadRegisterRoute();
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     hashMock.mockResolvedValue('hashed-password');
-    prismaMock.user.findUnique.mockResolvedValue(null);
     transactionClient.user.create.mockResolvedValue({ id: 'user-1' });
     transactionClient.reminderTemplate.createMany.mockRejectedValue(new Error('transient db failure'));
 

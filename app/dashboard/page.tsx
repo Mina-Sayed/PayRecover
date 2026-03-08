@@ -181,7 +181,7 @@ export default function DashboardOverview() {
               Active
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">Across WhatsApp and SMS</p>
+          <p className="text-xs text-slate-500 mt-2">Configured reminder steps across your templates</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">

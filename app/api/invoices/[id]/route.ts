@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PaymentLinkStatus, Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
@@ -12,6 +12,9 @@ import {
 } from '@/lib/validators';
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
 import { getDerivedOpenInvoiceStatus } from '@/lib/invoice-status';
+import { serializeInvoice } from '@/lib/invoice-serialization';
+import { ensureInvoiceOperationalArtifacts } from '@/lib/recovery-loop';
+import { toDecimal } from '@/lib/money';
 
 interface UpdateInvoiceBody {
   amount?: unknown;
@@ -22,6 +25,22 @@ interface UpdateInvoiceBody {
   phone?: unknown;
   email?: unknown;
 }
+
+const invoiceInclude: Prisma.InvoiceInclude = {
+  client: true,
+  events: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 5,
+  },
+  paymentLinks: {
+    where: {
+      provider: 'paymob',
+      status: { in: [PaymentLinkStatus.active, PaymentLinkStatus.paid] },
+    },
+    orderBy: [{ status: 'asc' as const }, { createdAt: 'desc' as const }],
+    take: 1,
+  },
+};
 
 export async function PATCH(
   request: Request,
@@ -43,13 +62,7 @@ export async function PATCH(
 
     const existing = await prisma.invoice.findFirst({
       where: { id, userId },
-      include: {
-        client: true,
-        events: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        },
-      },
+      include: invoiceInclude,
     });
 
     if (!existing) {
@@ -63,7 +76,7 @@ export async function PATCH(
       if (amount === null) {
         return apiError('Invalid amount', 400, 'VALIDATION_ERROR');
       }
-      updateData.amount = amount;
+      updateData.amount = toDecimal(amount);
     }
 
     if (body.dueDate !== undefined) {
@@ -133,7 +146,7 @@ export async function PATCH(
       return apiError('No valid update fields provided', 400, 'VALIDATION_ERROR');
     }
 
-    const invoice = await prisma.$transaction(async (tx) => {
+      const invoice = await prisma.$transaction(async (tx) => {
       if (hasClientUpdates) {
         await tx.client.update({
           where: { id: existing.clientId },
@@ -147,6 +160,35 @@ export async function PATCH(
             data: updateData,
           })
         : existing;
+
+      if (hasInvoiceUpdates && updatedInvoice.status === 'paid' && existing.status !== 'paid') {
+        await tx.paymentEvent.create({
+          data: {
+            invoiceId: updatedInvoice.id,
+            userId,
+            provider: 'manual',
+            providerEventId: `manual-${updatedInvoice.id}-${Date.now()}`,
+            type: 'manual_mark_paid',
+            amount: updatedInvoice.amount,
+            currency: updatedInvoice.currency,
+            rawPayload: {
+              source: 'dashboard_item_patch',
+            },
+          },
+        });
+
+        await tx.reminderRun.updateMany({
+          where: {
+            invoiceId: updatedInvoice.id,
+            userId,
+            status: { in: ['scheduled', 'sending', 'failed'] },
+          },
+          data: {
+            status: 'suppressed',
+            suppressionReason: `Reminders suppressed after manual payment for ${updatedInvoice.invoiceNo}`,
+          },
+        });
+      }
 
       if (hasInvoiceUpdates) {
         const changedFields = [
@@ -198,13 +240,7 @@ export async function PATCH(
 
       const refreshedInvoice = await tx.invoice.findFirst({
         where: { id, userId },
-        include: {
-          client: true,
-          events: {
-            orderBy: { createdAt: 'desc' },
-            take: 5,
-          },
-        },
+        include: invoiceInclude,
       });
 
       if (!refreshedInvoice) {
@@ -214,7 +250,22 @@ export async function PATCH(
       return refreshedInvoice;
     });
 
-    return Response.json(invoice);
+    if (
+      body.amount !== undefined ||
+      body.dueDate !== undefined ||
+      body.clientName !== undefined ||
+      body.email !== undefined ||
+      body.phone !== undefined
+    ) {
+      await ensureInvoiceOperationalArtifacts(prisma, id);
+    }
+
+    const hydratedInvoice = await prisma.invoice.findFirst({
+      where: { id, userId },
+      include: invoiceInclude,
+    });
+
+    return Response.json(serializeInvoice(hydratedInvoice ?? invoice));
   } catch (error) {
     console.error('Update invoice error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

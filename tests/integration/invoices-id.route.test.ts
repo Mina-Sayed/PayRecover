@@ -16,6 +16,12 @@ async function loadInvoiceByIdRoute() {
     invoiceEvent: {
       create: vi.fn(),
     },
+    paymentEvent: {
+      create: vi.fn(),
+    },
+    reminderRun: {
+      updateMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   };
 
@@ -25,6 +31,9 @@ async function loadInvoiceByIdRoute() {
 
   vi.doMock('@/lib/auth', () => ({ auth: authMock }));
   vi.doMock('@/lib/prisma', () => ({ prisma: prismaMock }));
+  vi.doMock('@/lib/recovery-loop', () => ({
+    ensureInvoiceOperationalArtifacts: vi.fn(),
+  }));
 
   const route = await import('@/app/api/invoices/[id]/route');
   return { route, authMock, prismaMock };
@@ -39,17 +48,26 @@ describe('/api/invoices/[id] route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       invoiceNo: 'INV-2026-001',
+      amount: 300,
+      currency: 'USD',
       status: 'pending',
       dueDate: new Date('2026-03-10T00:00:00.000Z'),
+      notes: null,
       client: { id: 'client-1' },
+      paymentLinks: [],
       events: [],
     });
     prismaMock.client.update.mockResolvedValue({ id: 'client-1' });
     prismaMock.invoice.update.mockResolvedValue({
       id: 'inv-1',
       invoiceNo: 'INV-2026-001',
+      amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'paid',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
     prismaMock.invoice.findFirst.mockResolvedValueOnce({
@@ -57,15 +75,24 @@ describe('/api/invoices/[id] route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       invoiceNo: 'INV-2026-001',
+      amount: 300,
+      currency: 'USD',
       status: 'pending',
       dueDate: new Date('2026-03-10T00:00:00.000Z'),
+      notes: null,
       client: { id: 'client-1' },
+      paymentLinks: [],
       events: [],
     }).mockResolvedValueOnce({
       id: 'inv-1',
       invoiceNo: 'INV-2026-001',
+      amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'paid',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
 
@@ -84,16 +111,18 @@ describe('/api/invoices/[id] route handlers', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.invoice.findFirst).toHaveBeenCalledWith({
-      where: { id: 'inv-1', userId: 'user-1' },
-      include: {
-        client: true,
-        events: {
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        },
-      },
-    });
+    expect(prismaMock.invoice.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-1', userId: 'user-1' },
+        include: expect.objectContaining({
+          client: true,
+          events: {
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          },
+        }),
+      })
+    );
     expect(prismaMock.client.update).toHaveBeenCalledWith({
       where: { id: 'client-1' },
       data: expect.objectContaining({
@@ -123,9 +152,13 @@ describe('/api/invoices/[id] route handlers', () => {
         userId: 'user-1',
         clientId: 'client-1',
         invoiceNo: 'INV-2026-001',
+        amount: 300,
+        currency: 'USD',
         status: 'pending',
         dueDate: new Date('2026-03-10T00:00:00.000Z'),
+        notes: null,
         client: { id: 'client-1', name: 'Old Name', phone: '+971500000000' },
+        paymentLinks: [],
         events: [],
       })
       .mockResolvedValueOnce({
@@ -133,9 +166,13 @@ describe('/api/invoices/[id] route handlers', () => {
         userId: 'user-1',
         clientId: 'client-1',
         invoiceNo: 'INV-2026-001',
+        amount: 300,
+        currency: 'USD',
         status: 'pending',
         dueDate: new Date('2026-03-10T00:00:00.000Z'),
+        notes: null,
         client: { id: 'client-1', name: 'Sara', phone: '+971500000001' },
+        paymentLinks: [],
         events: [],
       });
     prismaMock.client.update.mockResolvedValue({ id: 'client-1' });

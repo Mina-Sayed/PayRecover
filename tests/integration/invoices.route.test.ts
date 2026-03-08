@@ -5,6 +5,9 @@ async function loadInvoicesRoute() {
 
   const authMock = vi.fn();
   const prismaMock = {
+    user: {
+      findUnique: vi.fn(),
+    },
     client: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -21,6 +24,18 @@ async function loadInvoicesRoute() {
     invoiceEvent: {
       create: vi.fn(),
     },
+    paymentEvent: {
+      create: vi.fn(),
+    },
+    reminderRun: {
+      updateMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
+    paymentLink: {
+      updateMany: vi.fn(),
+      create: vi.fn(),
+    },
     $transaction: vi.fn(),
   };
 
@@ -30,6 +45,10 @@ async function loadInvoicesRoute() {
 
   vi.doMock('@/lib/auth', () => ({ auth: authMock }));
   vi.doMock('@/lib/prisma', () => ({ prisma: prismaMock }));
+  vi.doMock('@/lib/recovery-loop', () => ({
+    ensureInvoiceOperationalArtifacts: vi.fn(),
+    suppressReminderRunsForInvoice: vi.fn(),
+  }));
 
   const route = await import('@/app/api/invoices/route');
   return { route, authMock, prismaMock };
@@ -55,9 +74,13 @@ describe('/api/invoices route handlers', () => {
         id: 'inv-1',
         invoiceNo: 'INV-2026-001',
         amount: 120,
+        currency: 'USD',
         dueDate: new Date('2026-01-15').toISOString(),
         status: 'overdue',
+        notes: null,
+        paymentLinks: [],
         client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+        events: [],
       },
     ]);
     prismaMock.invoice.count.mockResolvedValue(11);
@@ -107,9 +130,13 @@ describe('/api/invoices route handlers', () => {
         id: 'inv-6',
         invoiceNo: 'INV-2026-006',
         amount: 120,
+        currency: 'USD',
         dueDate: new Date('2026-01-15').toISOString(),
         status: 'pending',
+        notes: null,
+        paymentLinks: [],
         client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+        events: [],
       },
     ]);
 
@@ -129,6 +156,7 @@ describe('/api/invoices route handlers', () => {
   it('creates invoices with deterministic sequence and user ownership', async () => {
     const { route, authMock, prismaMock } = await loadInvoicesRoute();
     authMock.mockResolvedValue({ user: { id: 'user-1' } });
+    prismaMock.user.findUnique.mockResolvedValue({ businessName: 'PayRecover' });
     prismaMock.client.findFirst.mockResolvedValue(null);
     prismaMock.client.create.mockResolvedValue({
       id: 'client-1',
@@ -148,8 +176,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'pending',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
     prismaMock.invoice.findFirst.mockResolvedValue({
@@ -158,8 +190,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'pending',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [
         {
           id: 'evt-1',
@@ -211,6 +247,7 @@ describe('/api/invoices route handlers', () => {
   it('retries invoice creation after invoice number unique conflicts', async () => {
     const { route, authMock, prismaMock } = await loadInvoicesRoute();
     authMock.mockResolvedValue({ user: { id: 'user-1' } });
+    prismaMock.user.findUnique.mockResolvedValue({ businessName: 'PayRecover' });
     prismaMock.client.findFirst.mockResolvedValue(null);
     prismaMock.client.create.mockResolvedValue({
       id: 'client-1',
@@ -235,8 +272,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'pending',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
     prismaMock.invoice.findFirst.mockResolvedValue({
@@ -245,8 +286,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'pending',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
 
@@ -274,6 +319,7 @@ describe('/api/invoices route handlers', () => {
   it('creates past-due invoices as overdue immediately', async () => {
     const { route, authMock, prismaMock } = await loadInvoicesRoute();
     authMock.mockResolvedValue({ user: { id: 'user-1' } });
+    prismaMock.user.findUnique.mockResolvedValue({ businessName: 'PayRecover' });
     prismaMock.client.findFirst.mockResolvedValue(null);
     prismaMock.client.create.mockResolvedValue({
       id: 'client-1',
@@ -290,8 +336,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2020-03-10T00:00:00.000Z'),
       status: 'overdue',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
     prismaMock.invoice.findFirst.mockResolvedValue({
@@ -300,8 +350,12 @@ describe('/api/invoices route handlers', () => {
       userId: 'user-1',
       clientId: 'client-1',
       amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2020-03-10T00:00:00.000Z'),
       status: 'overdue',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
 
@@ -337,20 +391,32 @@ describe('/api/invoices route handlers', () => {
       .mockResolvedValueOnce({
         id: 'inv-1',
         status: 'pending',
+        amount: 300,
+        currency: 'USD',
         dueDate: new Date('2026-03-10T00:00:00.000Z'),
       })
       .mockResolvedValueOnce({
         id: 'inv-1',
         invoiceNo: 'INV-2026-004',
+        amount: 300,
+        currency: 'USD',
+        dueDate: new Date('2026-03-10T00:00:00.000Z'),
         status: 'paid',
+        notes: null,
         client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+        paymentLinks: [],
         events: [],
       });
     prismaMock.invoice.update.mockResolvedValue({
       id: 'inv-1',
       invoiceNo: 'INV-2026-004',
+      amount: 300,
+      currency: 'USD',
+      dueDate: new Date('2026-03-10T00:00:00.000Z'),
       status: 'paid',
+      notes: null,
       client: { id: 'client-1', name: 'Sara', phone: '+971500000000' },
+      paymentLinks: [],
       events: [],
     });
 

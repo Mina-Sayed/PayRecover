@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
 import { syncOpenInvoiceStatuses } from '@/lib/invoice-status';
+import { decimalToNumber } from '@/lib/money';
 
 export async function GET() {
   try {
@@ -43,12 +44,15 @@ export async function GET() {
       ]);
 
     return Response.json({
-      totalOutstanding: totalOutstanding._sum.amount || 0,
+      totalOutstanding: decimalToNumber(totalOutstanding._sum.amount || 0),
       overdueCount: totalOutstanding._count._all,
-      recoveredThisMonth: recoveredThisMonth._sum.amount || 0,
+      recoveredThisMonth: decimalToNumber(recoveredThisMonth._sum.amount || 0),
       activeReminders,
       totalInvoices,
-      recentInvoices,
+      recentInvoices: recentInvoices.map((invoice) => ({
+        ...invoice,
+        amount: decimalToNumber(invoice.amount),
+      })),
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);

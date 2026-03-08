@@ -44,7 +44,8 @@ export default function LandingPage() {
           <span className="text-emerald-500">Let automations do it.</span>
         </h1>
         <p className="text-lg text-slate-600 mb-10 max-w-2xl mx-auto">
-          Automate your invoice follow-ups with smart WhatsApp and SMS reminders. Recover lost revenue without the awkward conversations.
+          Track unpaid invoices, prepare reminder workflows, and move toward a live recovery loop
+          without rebuilding your back office from scratch.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link href="/dashboard" className="flex items-center gap-2 bg-emerald-500 text-white px-8 py-4 rounded-xl font-medium hover:bg-emerald-600 transition-colors text-lg w-full sm:w-auto justify-center">
@@ -105,16 +106,16 @@ export default function LandingPage() {
               <span className="text-slate-500">/month</span>
             </div>
             <ul className="space-y-4 mb-8 flex-1">
-              {['Up to 100 active clients', 'Automated Email Reminders', 'Basic Payment Tracking', '50 SMS Credits/mo'].map((feature, i) => (
+              {['Up to 100 active clients', 'Invoice tracking workspace', 'Reminder template management', 'Business profile settings'].map((feature, i) => (
                 <li key={i} className="flex items-center gap-3 text-slate-700">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                   <span>{feature}</span>
                 </li>
               ))}
             </ul>
-            <button className="w-full py-3 px-4 bg-slate-100 text-slate-900 font-medium rounded-xl hover:bg-slate-200 transition-colors">
-              Start 14-Day Trial
-            </button>
+            <Link href="/auth/signup" className="w-full py-3 px-4 bg-slate-100 text-slate-900 font-medium rounded-xl hover:bg-slate-200 transition-colors text-center">
+              Start with the MVP
+            </Link>
           </div>
 
           {/* Pro Plan */}
@@ -129,16 +130,16 @@ export default function LandingPage() {
               <span className="text-slate-400">/month</span>
             </div>
             <ul className="space-y-4 mb-8 flex-1">
-              {['Unlimited clients', 'WhatsApp API Integration', 'Advanced Analytics Dashboard', '500 SMS Credits/mo', 'Custom Message Templates'].map((feature, i) => (
+              {['Planned Paymob payment links', 'Planned WATI reminder delivery', 'Future event-backed analytics', 'Custom reminder templates', 'Operational invoice timeline'].map((feature, i) => (
                 <li key={i} className="flex items-center gap-3 text-slate-300">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                   <span>{feature}</span>
                 </li>
               ))}
             </ul>
-            <button className="w-full py-3 px-4 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors">
-              Start 14-Day Trial
-            </button>
+            <Link href="/auth/signup" className="w-full py-3 px-4 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors text-center">
+              Join the rollout
+            </Link>
           </div>
         </div>
       </section>
