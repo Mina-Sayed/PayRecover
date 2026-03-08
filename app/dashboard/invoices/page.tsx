@@ -89,6 +89,30 @@ const emptyForm: InvoiceFormState = {
   dueDate: '',
 };
 
+function InvoiceStatusBadge({ status }: { status: Invoice['status'] }) {
+  if (status === 'overdue') {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-100">
+        Overdue
+      </span>
+    );
+  }
+
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-100">
+        Pending
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+      Paid
+    </span>
+  );
+}
+
 function InvoicesLoadingState() {
   return (
     <div className="space-y-6">
@@ -427,7 +451,247 @@ function InvoicesPageClient() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="md:hidden divide-y divide-slate-200">
+          {loading &&
+            Array.from({ length: 4 }, (_, i) => (
+              <div key={`mobile-loading-${i}`} className="p-4">
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ))}
+
+          {!loading &&
+            invoices.map((invoice) => (
+              <div key={`mobile-${invoice.id}`} className="p-4 space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      className="min-w-0 text-left"
+                      onClick={() =>
+                        setExpandedRowId((prev) => (prev === invoice.id ? null : invoice.id))
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900">{invoice.client.name}</p>
+                        <ChevronDown
+                          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                            expandedRowId === invoice.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{invoice.client.phone}</p>
+                    </button>
+
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={() =>
+                          setActionsOpenId(actionsOpenId === invoice.id ? null : invoice.id)
+                        }
+                        aria-label={`Open actions for ${invoice.invoiceNo}`}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                      <AnimatePresence>
+                        {actionsOpenId === invoice.id && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                            transition={{ duration: 0.14 }}
+                            className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1"
+                          >
+                            {invoice.status !== 'paid' && (
+                              <button
+                                onClick={() => handleMarkAsPaid(invoice)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                              >
+                                <Check className="w-4 h-4" />
+                                Mark as Paid
+                              </button>
+                            )}
+                            <button
+                              onClick={() => openEditModal(invoice)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Pencil className="w-4 h-4" />
+                              Edit Invoice
+                            </button>
+                            <button
+                              onClick={() => handleRefreshPaymentLink(invoice)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                              {invoice.paymentLink ? 'Refresh Payment Link' : 'Create Payment Link'}
+                            </button>
+                            {invoice.paymentLink && (
+                              <button
+                                onClick={() => {
+                                  window.open(invoice.paymentLink?.url, '_blank', 'noopener,noreferrer');
+                                  setActionsOpenId(null);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                                Open Payment Link
+                              </button>
+                            )}
+                            <div className="border-t border-slate-100 my-1" />
+                            <button
+                              onClick={() => {
+                                setDeleteTarget(invoice);
+                                setActionsOpenId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete Invoice
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Invoice
+                      </p>
+                      <p className="mt-1 font-mono text-xs text-slate-700">{invoice.invoiceNo}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Amount
+                      </p>
+                      <p className="mt-1 font-semibold text-slate-900">
+                        ${invoice.amount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Due Date
+                      </p>
+                      <p className="mt-1 text-slate-700">
+                        {new Date(invoice.dueDate).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Status
+                      </p>
+                      <div className="mt-1">
+                        <InvoiceStatusBadge status={invoice.status} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {expandedRowId === invoice.id && (
+                    <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+                      <div className="space-y-2 text-sm text-slate-600">
+                        <div className="flex items-center gap-3">
+                          <Mail className="w-4 h-4 text-slate-400" />
+                          {invoice.client.email || 'No email'}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <MapPin className="w-4 h-4 text-slate-400" />
+                          {invoice.client.address || 'No address'}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Payment Link
+                        </p>
+                        {invoice.paymentLink ? (
+                          <div className="mt-2 space-y-2">
+                            <p className="text-sm font-medium text-slate-900 capitalize">
+                              {invoice.paymentLink.status} via {invoice.paymentLink.provider}
+                            </p>
+                            <a
+                              href={invoice.paymentLink.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-emerald-700 hover:text-emerald-800 break-all"
+                            >
+                              {invoice.paymentLink.url}
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            <p className="text-sm text-slate-500">
+                              No live payment link has been created yet.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Invoice Notes
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {invoice.notes || 'No notes added for this invoice.'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Recent Activity
+                        </p>
+                        {invoice.events.length > 0 ? (
+                          <div className="mt-2 space-y-2">
+                            {invoice.events.map((event) => (
+                              <div key={event.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                                <p className="text-sm font-medium text-slate-900">{event.message}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {new Date(event.createdAt).toLocaleString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                  })}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-slate-500">
+                            No invoice activity has been recorded yet.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+          {!loading && invoices.length === 0 && (
+            <div className="px-6 py-16 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-slate-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-900">No invoices found</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {searchQuery
+                      ? 'Try adjusting your search query.'
+                      : 'No invoices match the current filter.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
               <tr>
@@ -484,21 +748,7 @@ function InvoicesPageClient() {
                         })}
                       </td>
                       <td className="px-6 py-4">
-                        {invoice.status === 'overdue' && (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-100">
-                            Overdue
-                          </span>
-                        )}
-                        {invoice.status === 'pending' && (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-100">
-                            Pending
-                          </span>
-                        )}
-                        {invoice.status === 'paid' && (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                            Paid
-                          </span>
-                        )}
+                        <InvoiceStatusBadge status={invoice.status} />
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="relative inline-block">
@@ -705,11 +955,11 @@ function InvoicesPageClient() {
           </table>
         </div>
 
-        <div className="p-4 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500">
-          <div>
+        <div className="p-4 border-t border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-slate-500">
+          <div className="text-center sm:text-left">
             Showing {invoices.length} of {total} invoices
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
