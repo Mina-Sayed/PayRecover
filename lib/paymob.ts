@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getEnv, requireEnv } from '@/lib/env';
+import type { PaymobConnectionConfig } from '@/lib/provider-connections';
 
 const PAYMOB_DEFAULT_BASE_URL = 'https://accept.paymob.com';
 
@@ -56,8 +56,8 @@ interface PaymobWebhookCore {
   invoiceReference: string | null;
 }
 
-function getPaymobBaseUrl(): string {
-  return getEnv('PAYMOB_API_BASE_URL') ?? PAYMOB_DEFAULT_BASE_URL;
+function getPaymobBaseUrl(config: PaymobConnectionConfig): string {
+  return config.apiBaseUrl?.trim() || PAYMOB_DEFAULT_BASE_URL;
 }
 
 function getNestedValue(payload: Record<string, unknown>, path: string): unknown {
@@ -82,20 +82,10 @@ function stringifyPaymobValue(value: unknown): string {
   return String(value);
 }
 
-export function isPaymobConfigured(): boolean {
-  return Boolean(
-    getEnv('PAYMOB_PUBLIC_KEY') &&
-      getEnv('PAYMOB_SECRET_KEY') &&
-      getEnv('PAYMOB_INTEGRATION_ID') &&
-      getEnv('PAYMOB_HMAC_SECRET')
-  );
-}
-
-export function buildPaymobCheckoutUrl(clientSecret: string): string {
-  const baseUrl = getPaymobBaseUrl();
-  const publicKey = requireEnv('PAYMOB_PUBLIC_KEY');
+export function buildPaymobCheckoutUrl(clientSecret: string, config: PaymobConnectionConfig): string {
+  const baseUrl = getPaymobBaseUrl(config);
   const url = new URL('/unifiedcheckout/', baseUrl);
-  url.searchParams.set('publicKey', publicKey);
+  url.searchParams.set('publicKey', config.publicKey);
   url.searchParams.set('clientSecret', clientSecret);
   return url.toString();
 }
@@ -134,11 +124,12 @@ function readPaymobProviderRef(payload: Record<string, unknown>): string | null 
 }
 
 export async function createPaymobPaymentLink(
-  input: CreatePaymobPaymentLinkInput
+  input: CreatePaymobPaymentLinkInput,
+  config: PaymobConnectionConfig
 ): Promise<PaymobPaymentLinkResult> {
-  const secretKey = requireEnv('PAYMOB_SECRET_KEY');
-  const integrationId = Number(requireEnv('PAYMOB_INTEGRATION_ID'));
-  const endpoint = new URL('/v1/intention/', getPaymobBaseUrl());
+  const secretKey = config.secretKey;
+  const integrationId = Number(config.integrationId);
+  const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(config));
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -191,7 +182,7 @@ export async function createPaymobPaymentLink(
 
   return {
     providerRef: readPaymobProviderRef(payload),
-    url: buildPaymobCheckoutUrl(clientSecret),
+    url: buildPaymobCheckoutUrl(clientSecret, config),
     expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null,
     rawPayload: payload,
   };
@@ -242,17 +233,55 @@ export function extractPaymobWebhookCore(payload: unknown): PaymobWebhookCore | 
   };
 }
 
-export function verifyPaymobWebhookSignature(payload: unknown): boolean {
+export function verifyPaymobWebhookSignature(
+  payload: unknown,
+  hmacSecret: string
+): boolean {
   const core = extractPaymobWebhookCore(payload);
   if (!core?.receivedSignature) {
     return false;
   }
 
-  const secret = requireEnv('PAYMOB_HMAC_SECRET');
   const concatenated = PAYMOB_HMAC_FIELDS.map((field) =>
     stringifyPaymobValue(getNestedValue(core.signatureSource, field))
   ).join('');
 
-  const expected = crypto.createHmac('sha512', secret).update(concatenated).digest('hex');
+  const expected = crypto.createHmac('sha512', hmacSecret).update(concatenated).digest('hex');
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(core.receivedSignature));
+}
+
+export async function verifyPaymobConnection(config: PaymobConnectionConfig): Promise<{
+  ok: boolean;
+  error: string | null;
+}> {
+  try {
+    const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(config));
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${config.secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: 'Paymob credentials were rejected' };
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      return { ok: true, error: null };
+    }
+
+    if (response.ok) {
+      return { ok: true, error: null };
+    }
+
+    return { ok: false, error: `Unexpected Paymob status ${response.status}` };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to reach Paymob',
+    };
+  }
 }

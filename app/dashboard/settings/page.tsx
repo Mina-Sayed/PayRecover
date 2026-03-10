@@ -14,7 +14,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import Skeleton from '../../components/skeleton';
 import { useToast } from '../../components/toast';
 import { apiFetch } from '@/lib/client-api';
-import { providerCatalog } from '@/lib/provider-catalog';
+import { PaymentConnectionSummary, MessagingConnectionSummary } from '@/lib/provider-connections';
 
 type SettingsTab = 'general' | 'integrations' | 'notifications';
 
@@ -24,12 +24,71 @@ interface SettingsResponse {
   businessName: string | null;
   whatsappNumber: string | null;
   plan: string;
+  notificationPrefs: {
+    paymentReceived: boolean;
+    dailySummary: boolean;
+    overdueAlerts: boolean;
+  };
+  messagingConnection: MessagingConnectionSummary;
+  paymentConnection: PaymentConnectionSummary;
 }
 
 interface SettingsForm {
   name: string;
   businessName: string;
   whatsappNumber: string;
+}
+
+interface MessagingConnectionForm {
+  accountLabel: string;
+  mode: 'sandbox' | 'live';
+  senderIdentifier: string;
+  apiBaseUrl: string;
+  accessToken: string;
+  webhookSecret: string;
+}
+
+interface PaymentConnectionForm {
+  accountLabel: string;
+  mode: 'sandbox' | 'live';
+  publicKey: string;
+  secretKey: string;
+  integrationId: string;
+  hmacSecret: string;
+  apiBaseUrl: string;
+}
+
+interface OperationalSyncSummary {
+  invoicesScanned: number;
+  paymentLinksCreated: number;
+  reminderRunsCreated: number;
+}
+
+interface MessagingVerifyResponse {
+  messagingConnection: MessagingConnectionSummary;
+  operationalSync: OperationalSyncSummary | null;
+}
+
+interface PaymentVerifyResponse {
+  paymentConnection: PaymentConnectionSummary;
+  operationalSync: OperationalSyncSummary | null;
+}
+
+function formatOperationalSyncMessage(
+  sync: OperationalSyncSummary | null,
+  providerLabel: string
+): string {
+  if (!sync) {
+    return `${providerLabel} connection verified`;
+  }
+
+  const parts = [
+    `${sync.invoicesScanned} invoices scanned`,
+    `${sync.paymentLinksCreated} payment links created`,
+    `${sync.reminderRunsCreated} reminder runs materialized`,
+  ];
+
+  return `${providerLabel} verified. ${parts.join(', ')}.`;
 }
 
 function SettingsLoadingState() {
@@ -66,6 +125,23 @@ export default function SettingsPage() {
     businessName: '',
     whatsappNumber: '',
   });
+  const [messagingForm, setMessagingForm] = useState<MessagingConnectionForm>({
+    accountLabel: '',
+    mode: 'sandbox',
+    senderIdentifier: '',
+    apiBaseUrl: '',
+    accessToken: '',
+    webhookSecret: '',
+  });
+  const [paymentForm, setPaymentForm] = useState<PaymentConnectionForm>({
+    accountLabel: '',
+    mode: 'sandbox',
+    publicKey: '',
+    secretKey: '',
+    integrationId: '',
+    hmacSecret: '',
+    apiBaseUrl: '',
+  });
   const [notificationPrefs, setNotificationPrefs] = useState({
     paymentReceived: true,
     dailySummary: true,
@@ -73,6 +149,7 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [providerSaving, setProviderSaving] = useState<'messaging' | 'payments' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { addToast } = useToast();
@@ -88,6 +165,24 @@ export default function SettingsPage() {
         businessName: data.businessName ?? '',
         whatsappNumber: data.whatsappNumber ?? '',
       });
+      setMessagingForm({
+        accountLabel: data.messagingConnection.accountLabel ?? '',
+        mode: data.messagingConnection.mode,
+        senderIdentifier: data.messagingConnection.senderIdentifier ?? '',
+        apiBaseUrl: data.messagingConnection.configPreview?.apiBaseUrl ?? '',
+        accessToken: '',
+        webhookSecret: '',
+      });
+      setPaymentForm({
+        accountLabel: data.paymentConnection.accountLabel ?? '',
+        mode: data.paymentConnection.mode,
+        publicKey: '',
+        secretKey: '',
+        integrationId: data.paymentConnection.configPreview?.integrationId ?? '',
+        hmacSecret: '',
+        apiBaseUrl: data.paymentConnection.configPreview?.apiBaseUrl ?? '',
+      });
+      setNotificationPrefs(data.notificationPrefs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -108,8 +203,25 @@ export default function SettingsPage() {
     );
   }, [form, profile]);
 
+  const notificationPrefsDirty = useMemo(() => {
+    if (!profile) return false;
+    return (
+      notificationPrefs.paymentReceived !== profile.notificationPrefs.paymentReceived ||
+      notificationPrefs.dailySummary !== profile.notificationPrefs.dailySummary ||
+      notificationPrefs.overdueAlerts !== profile.notificationPrefs.overdueAlerts
+    );
+  }, [notificationPrefs, profile]);
+
   const updateForm = (field: keyof SettingsForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateMessagingForm = (field: keyof MessagingConnectionForm, value: string) => {
+    setMessagingForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updatePaymentForm = (field: keyof PaymentConnectionForm, value: string) => {
+    setPaymentForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
@@ -134,11 +246,143 @@ export default function SettingsPage() {
         businessName: updated.businessName ?? '',
         whatsappNumber: updated.whatsappNumber ?? '',
       });
+      setNotificationPrefs(updated.notificationPrefs);
       addToast('Settings saved successfully');
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to save settings', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveNotificationPrefs = async () => {
+    if (!notificationPrefsDirty) {
+      addToast('No notification changes to save', 'info');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await apiFetch<SettingsResponse>('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          notificationPrefs,
+        }),
+      });
+      setProfile(updated);
+      setNotificationPrefs(updated.notificationPrefs);
+      addToast('Notification preferences saved');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save notification preferences', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveMessagingConnection = async () => {
+    setProviderSaving('messaging');
+    try {
+      const data = await apiFetch<{ messagingConnection: MessagingConnectionSummary }>(
+        '/api/provider-connections/messaging',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            accountLabel: messagingForm.accountLabel,
+            mode: messagingForm.mode,
+            senderIdentifier: messagingForm.senderIdentifier,
+            apiBaseUrl: messagingForm.apiBaseUrl,
+            accessToken: messagingForm.accessToken,
+            webhookSecret: messagingForm.webhookSecret,
+          }),
+        }
+      );
+      setProfile((prev) => (prev ? { ...prev, messagingConnection: data.messagingConnection } : prev));
+      setMessagingForm((prev) => ({ ...prev, accessToken: '', webhookSecret: '' }));
+      addToast('WATI connection saved');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save WATI connection', 'error');
+    } finally {
+      setProviderSaving(null);
+    }
+  };
+
+  const handleVerifyMessagingConnection = async () => {
+    if (!profile?.messagingConnection.id) {
+      addToast('Save the WATI connection first', 'info');
+      return;
+    }
+
+    setProviderSaving('messaging');
+    try {
+      const data = await apiFetch<MessagingVerifyResponse>(
+        `/api/provider-connections/messaging/${profile.messagingConnection.id}/verify`,
+        { method: 'POST' }
+      );
+      setProfile((prev) => (prev ? { ...prev, messagingConnection: data.messagingConnection } : prev));
+      addToast(
+        data.messagingConnection.status === 'verified'
+          ? formatOperationalSyncMessage(data.operationalSync, 'WATI connection')
+          : 'WATI connection check failed',
+        data.messagingConnection.status === 'verified' ? 'success' : 'error'
+      );
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to verify WATI connection', 'error');
+    } finally {
+      setProviderSaving(null);
+    }
+  };
+
+  const handleSavePaymentConnection = async () => {
+    setProviderSaving('payments');
+    try {
+      const data = await apiFetch<{ paymentConnection: PaymentConnectionSummary }>(
+        '/api/provider-connections/payments',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            accountLabel: paymentForm.accountLabel,
+            mode: paymentForm.mode,
+            publicKey: paymentForm.publicKey,
+            secretKey: paymentForm.secretKey,
+            integrationId: paymentForm.integrationId,
+            hmacSecret: paymentForm.hmacSecret,
+            apiBaseUrl: paymentForm.apiBaseUrl,
+          }),
+        }
+      );
+      setProfile((prev) => (prev ? { ...prev, paymentConnection: data.paymentConnection } : prev));
+      setPaymentForm((prev) => ({ ...prev, publicKey: '', secretKey: '', hmacSecret: '' }));
+      addToast('Paymob connection saved');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save Paymob connection', 'error');
+    } finally {
+      setProviderSaving(null);
+    }
+  };
+
+  const handleVerifyPaymentConnection = async () => {
+    if (!profile?.paymentConnection.id) {
+      addToast('Save the Paymob connection first', 'info');
+      return;
+    }
+
+    setProviderSaving('payments');
+    try {
+      const data = await apiFetch<PaymentVerifyResponse>(
+        `/api/provider-connections/payments/${profile.paymentConnection.id}/verify`,
+        { method: 'POST' }
+      );
+      setProfile((prev) => (prev ? { ...prev, paymentConnection: data.paymentConnection } : prev));
+      addToast(
+        data.paymentConnection.status === 'verified'
+          ? formatOperationalSyncMessage(data.operationalSync, 'Paymob connection')
+          : 'Paymob connection check failed',
+        data.paymentConnection.status === 'verified' ? 'success' : 'error'
+      );
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to verify Paymob connection', 'error');
+    } finally {
+      setProviderSaving(null);
     }
   };
 
@@ -305,52 +549,183 @@ export default function SettingsPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">Provider Connections</h3>
                     <p className="text-sm text-slate-500">
-                      These provider choices are locked for the first live rollout, but the
-                      onboarding and credential health checks are still backend-driven work.
+                      Each business owns its own WATI and Paymob accounts. PayRecover stores the
+                      tenant connection, verifies it, and uses it for reminder delivery and payment-link
+                      orchestration.
                     </p>
                   </div>
 
-                  <div className="grid gap-4 max-w-2xl">
-                    {providerCatalog.map((provider) => (
-                      <div
-                        key={provider.id}
-                        className="border border-slate-200 rounded-xl p-5 bg-slate-50/50"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-white border border-slate-200 rounded-lg flex items-center justify-center font-bold text-blue-600">
-                              {provider.badge}
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-slate-900">{provider.name}</h4>
-                              <p className="text-xs text-slate-500">{provider.headline}</p>
-                            </div>
-                          </div>
-                          <span className="text-xs font-medium px-2 py-1 rounded-md bg-amber-100 text-amber-700">
-                            Planned
-                          </span>
-                        </div>
-
-                        <p className="text-sm text-slate-600 mt-4">{provider.description}</p>
-
-                        <div className="mt-4 grid gap-2">
-                          {provider.capabilities.map((capability) => (
-                            <div key={capability} className="text-xs text-slate-600">
-                              {capability}
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                          <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                            Planned environment keys
-                          </p>
-                          <p className="text-xs text-slate-500 mt-2">
-                            {provider.envKeys.join(', ')}
+                  <div className="grid gap-6">
+                    <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50/60 space-y-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h4 className="font-semibold text-slate-900">WATI</h4>
+                          <p className="text-xs text-slate-500">
+                            WhatsApp delivery uses your tenant-owned WATI account.
                           </p>
                         </div>
+                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-slate-900 text-white capitalize">
+                          {profile?.messagingConnection.status ?? 'not_connected'}
+                        </span>
                       </div>
-                    ))}
+
+                      <div className="grid gap-4 max-w-2xl">
+                        <input
+                          type="text"
+                          value={messagingForm.accountLabel}
+                          onChange={(event) => updateMessagingForm('accountLabel', event.target.value)}
+                          placeholder="Account label"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <select
+                          value={messagingForm.mode}
+                          onChange={(event) => updateMessagingForm('mode', event.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        >
+                          <option value="sandbox">Sandbox</option>
+                          <option value="live">Live</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={messagingForm.senderIdentifier}
+                          onChange={(event) => updateMessagingForm('senderIdentifier', event.target.value)}
+                          placeholder="WhatsApp sender identifier"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={messagingForm.apiBaseUrl}
+                          onChange={(event) => updateMessagingForm('apiBaseUrl', event.target.value)}
+                          placeholder="WATI API base URL"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="password"
+                          value={messagingForm.accessToken}
+                          onChange={(event) => updateMessagingForm('accessToken', event.target.value)}
+                          placeholder="Access token"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="password"
+                          value={messagingForm.webhookSecret}
+                          onChange={(event) => updateMessagingForm('webhookSecret', event.target.value)}
+                          placeholder="Webhook secret"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleSaveMessagingConnection}
+                          disabled={providerSaving !== null}
+                          className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium disabled:opacity-60"
+                        >
+                          {providerSaving === 'messaging' ? 'Saving...' : 'Save WATI Connection'}
+                        </button>
+                        <button
+                          onClick={handleVerifyMessagingConnection}
+                          disabled={providerSaving !== null}
+                          className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-60"
+                        >
+                          Verify WATI
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-500">
+                        {profile?.messagingConnection.lastError ||
+                          'Templates remain configuration until the WATI connection is verified.'}
+                      </p>
+                    </div>
+
+                    <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50/60 space-y-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h4 className="font-semibold text-slate-900">Paymob</h4>
+                          <p className="text-xs text-slate-500">
+                            Payment links and callback reconciliation use your tenant-owned Paymob account.
+                          </p>
+                        </div>
+                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-slate-900 text-white capitalize">
+                          {profile?.paymentConnection.status ?? 'not_connected'}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-4 max-w-2xl">
+                        <input
+                          type="text"
+                          value={paymentForm.accountLabel}
+                          onChange={(event) => updatePaymentForm('accountLabel', event.target.value)}
+                          placeholder="Account label"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <select
+                          value={paymentForm.mode}
+                          onChange={(event) => updatePaymentForm('mode', event.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        >
+                          <option value="sandbox">Sandbox</option>
+                          <option value="live">Live</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={paymentForm.apiBaseUrl}
+                          onChange={(event) => updatePaymentForm('apiBaseUrl', event.target.value)}
+                          placeholder="Paymob API base URL (optional)"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="text"
+                          value={paymentForm.integrationId}
+                          onChange={(event) => updatePaymentForm('integrationId', event.target.value)}
+                          placeholder="Integration ID"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="password"
+                          value={paymentForm.publicKey}
+                          onChange={(event) => updatePaymentForm('publicKey', event.target.value)}
+                          placeholder="Public key"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="password"
+                          value={paymentForm.secretKey}
+                          onChange={(event) => updatePaymentForm('secretKey', event.target.value)}
+                          placeholder="Secret key"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                        <input
+                          type="password"
+                          value={paymentForm.hmacSecret}
+                          onChange={(event) => updatePaymentForm('hmacSecret', event.target.value)}
+                          placeholder="HMAC secret"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleSavePaymentConnection}
+                          disabled={providerSaving !== null}
+                          className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium disabled:opacity-60"
+                        >
+                          {providerSaving === 'payments' ? 'Saving...' : 'Save Paymob Connection'}
+                        </button>
+                        <button
+                          onClick={handleVerifyPaymentConnection}
+                          disabled={providerSaving !== null}
+                          className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-60"
+                        >
+                          Verify Paymob
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-500">
+                        {profile?.paymentConnection.lastError ||
+                          'The first live recovery loop requires a verified Paymob connection before payment links can be created.'}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
@@ -358,9 +733,9 @@ export default function SettingsPage() {
                     <div>
                       <h5 className="text-sm font-medium text-blue-900">Current state</h5>
                       <p className="text-xs text-blue-700 mt-1">
-                        Paymob secrets and WATI tokens stay server-side. Provider onboarding,
-                        credential validation, and webhook trust checks are handled by backend routes,
-                        not by this settings screen yet.
+                        Provider secrets stay server-side and tenant-owned. Verification marks the
+                        connection usable for live orchestration, but reminder delivery and payment
+                        truth still depend on real provider callbacks.
                       </p>
                     </div>
                   </div>
@@ -379,7 +754,7 @@ export default function SettingsPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">Notifications</h3>
                     <p className="text-sm text-slate-500">
-                      Local preferences for dashboard alerts and summary notifications.
+                      Persisted preferences for dashboard alerts and summary notifications.
                     </p>
                   </div>
 
@@ -406,7 +781,6 @@ export default function SettingsPage() {
                             checked={notificationPrefs[key]}
                             onChange={() => {
                               setNotificationPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-                              addToast('Notification preference updated', 'info');
                             }}
                           />
                           <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
@@ -415,11 +789,22 @@ export default function SettingsPage() {
                     ))}
                   </div>
 
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      onClick={handleSaveNotificationPrefs}
+                      disabled={saving || !notificationPrefsDirty}
+                      className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl font-medium hover:bg-slate-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <Save className="w-4 h-4" />
+                      {saving ? 'Saving...' : 'Save Notifications'}
+                    </button>
+                  </div>
+
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <p className="text-xs text-emerald-700">
-                      Notification preferences are stored locally in this phase. Server persistence can
-                      be added in the next backend iteration.
+                      Notification preferences are now stored on your tenant profile and returned by
+                      the settings API.
                     </p>
                   </div>
                 </motion.div>

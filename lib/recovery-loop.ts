@@ -1,8 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { createPaymobPaymentLink, isPaymobConfigured } from '@/lib/paymob';
+import { createPaymobPaymentLink } from '@/lib/paymob';
 import { shouldMaterializeReminderRun, getReminderScheduledFor, renderReminderTemplate } from '@/lib/reminder-timing';
 import { amountToMinorUnits, formatCurrencyAmount, toDecimal } from '@/lib/money';
-import { sendWatiTemplateMessage, isWatiConfigured } from '@/lib/wati';
+import { sendWatiTemplateMessage } from '@/lib/wati';
+import {
+  decryptProviderConfig,
+  getVerifiedMessagingConnection,
+  getVerifiedPaymentConnection,
+  type WatiConnectionConfig,
+} from '@/lib/provider-connections';
 
 type PrismaLike = PrismaClient;
 
@@ -49,6 +55,9 @@ interface ReminderDispatchSelection {
   template: {
     providerTemplateName: string | null;
   } | null;
+  messagingConnection: {
+    encryptedConfig: string;
+  } | null;
   attempts: Array<{ attemptNo: number }>;
 }
 
@@ -69,18 +78,21 @@ export async function refreshInvoicePaymentLink(
   invoice: InvoiceCore,
   businessName: string
 ) {
-  if (!isPaymobConfigured()) {
+  const paymentConnection = await getVerifiedPaymentConnection(prisma, invoice.userId);
+  if (!paymentConnection) {
     return null;
   }
 
   await prisma.paymentLink.updateMany({
     where: {
       invoiceId: invoice.id,
-      provider: 'paymob',
+      providerConnectionId: paymentConnection.record.id,
       status: 'active',
+      isPrimary: true,
     },
     data: {
       status: 'expired',
+      isPrimary: false,
     },
   });
 
@@ -95,7 +107,7 @@ export async function refreshInvoicePaymentLink(
     businessName,
     callbackUrl: callbackPath('/api/webhooks/paymob'),
     redirectUrl: redirectPathForInvoice(invoice.id),
-  });
+  }, paymentConnection.config);
 
   const paymentLink = await prisma.paymentLink.create({
     data: {
@@ -103,8 +115,10 @@ export async function refreshInvoicePaymentLink(
       userId: invoice.userId,
       provider: 'paymob',
       providerRef: created.providerRef,
+      providerConnectionId: paymentConnection.record.id,
       url: created.url,
       status: 'active',
+      isPrimary: true,
       expiresAt: created.expiresAt,
       rawPayload: created.rawPayload as Prisma.InputJsonValue,
     },
@@ -128,7 +142,7 @@ export async function syncReminderRunsForInvoice(prisma: PrismaLike, invoiceId: 
     include: {
       client: true,
       paymentLinks: {
-        where: { provider: 'paymob', status: 'active' },
+        where: { isPrimary: true, status: 'active' },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -136,6 +150,11 @@ export async function syncReminderRunsForInvoice(prisma: PrismaLike, invoiceId: 
   });
 
   if (!invoice || invoice.status === 'paid' || invoice.paymentLinks.length === 0) {
+    return [];
+  }
+
+  const messagingConnection = await getVerifiedMessagingConnection(prisma, invoice.userId);
+  if (!messagingConnection) {
     return [];
   }
 
@@ -180,6 +199,7 @@ export async function syncReminderRunsForInvoice(prisma: PrismaLike, invoiceId: 
         templateId: template.id,
         userId: invoice.userId,
         channel: 'whatsapp',
+        messagingConnectionId: messagingConnection.record.id,
         timingLabel: template.timing,
         templateSnapshot: template.template,
         scheduledFor,
@@ -251,6 +271,107 @@ export async function ensureInvoiceOperationalArtifacts(
   return paymentLink;
 }
 
+interface OperationalBackfillResult {
+  invoicesScanned: number;
+  paymentLinksCreated: number;
+  reminderRunsCreated: number;
+}
+
+export async function syncOperationalArtifactsForUser(
+  prisma: PrismaLike,
+  userId: string
+): Promise<OperationalBackfillResult> {
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      userId,
+      status: { in: ['pending', 'overdue'] },
+    },
+    include: {
+      client: true,
+      paymentLinks: {
+        where: { isPrimary: true, status: 'active' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (invoices.length === 0) {
+    return {
+      invoicesScanned: 0,
+      paymentLinksCreated: 0,
+      reminderRunsCreated: 0,
+    };
+  }
+
+  const owner = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { businessName: true },
+  });
+
+  const businessName = owner?.businessName || 'PayRecover';
+  const paymentConnection = await getVerifiedPaymentConnection(prisma, userId);
+  const messagingConnection = await getVerifiedMessagingConnection(prisma, userId);
+
+  let paymentLinksCreated = 0;
+  let reminderRunsCreated = 0;
+
+  for (const invoice of invoices) {
+    let hasActivePrimaryPaymentLink = invoice.paymentLinks.length > 0;
+
+    if (!hasActivePrimaryPaymentLink && paymentConnection) {
+      try {
+        const paymentLink = await refreshInvoicePaymentLink(
+          prisma,
+          {
+            id: invoice.id,
+            invoiceNo: invoice.invoiceNo,
+            userId: invoice.userId,
+            amount: invoice.amount,
+            currency: invoice.currency,
+            dueDate: invoice.dueDate,
+            status: invoice.status,
+            createdAt: invoice.createdAt,
+            client: invoice.client,
+          },
+          businessName
+        );
+
+        if (paymentLink) {
+          paymentLinksCreated += 1;
+          hasActivePrimaryPaymentLink = true;
+        }
+      } catch (error) {
+        console.error('Operational backfill payment-link error:', {
+          invoiceId: invoice.id,
+          userId,
+          error,
+        });
+      }
+    }
+
+    if (messagingConnection && hasActivePrimaryPaymentLink) {
+      try {
+        const createdRuns = await syncReminderRunsForInvoice(prisma, invoice.id);
+        reminderRunsCreated += createdRuns.length;
+      } catch (error) {
+        console.error('Operational backfill reminder-run error:', {
+          invoiceId: invoice.id,
+          userId,
+          error,
+        });
+      }
+    }
+  }
+
+  return {
+    invoicesScanned: invoices.length,
+    paymentLinksCreated,
+    reminderRunsCreated,
+  };
+}
+
 export async function suppressReminderRunsForInvoice(
   prisma: PrismaLike,
   invoiceId: string,
@@ -316,12 +437,13 @@ export async function dispatchDueReminderRuns(
         include: {
           client: true,
           paymentLinks: {
-            where: { provider: 'paymob', status: 'active' },
+            where: { isPrimary: true, status: 'active' },
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
         },
       },
+      messagingConnection: true,
       template: {
         select: { providerTemplateName: true },
       },
@@ -356,12 +478,12 @@ export async function dispatchDueReminderRuns(
       },
     });
 
-    if (!isWatiConfigured()) {
+    if (!run.messagingConnection?.encryptedConfig) {
       await prisma.reminderRun.update({
         where: { id: run.id },
         data: {
           status: 'failed',
-          lastError: 'WATI is not configured',
+          lastError: 'No verified WATI connection',
         },
       });
       processed.push({ id: run.id, status: 'failed' });
@@ -393,12 +515,15 @@ export async function dispatchDueReminderRuns(
     }
 
     try {
+      const connection = decryptProviderConfig<WatiConnectionConfig>(
+        run.messagingConnection.encryptedConfig
+      );
       const response = await sendWatiTemplateMessage({
         phone: run.invoice.client.phone,
         templateName: run.template.providerTemplateName,
         broadcastName: `payrecover-${run.invoice.invoiceNo}-${run.id}`,
         parameters: buildReminderTemplateParameters(run as ReminderDispatchSelection),
-      });
+      }, connection);
 
       await prisma.deliveryAttempt.update({
         where: {

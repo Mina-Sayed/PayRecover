@@ -113,6 +113,6 @@ describe('paymob helpers', () => {
 
     payload.hmac = signPayload(payload);
 
-    expect(verifyPaymobWebhookSignature(payload)).toBe(true);
+    expect(verifyPaymobWebhookSignature(payload, process.env.PAYMOB_HMAC_SECRET!)).toBe(true);
   });
 });

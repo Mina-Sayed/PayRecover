@@ -14,7 +14,22 @@ export async function GET() {
 
     await syncOpenInvoiceStatuses(prisma, userId);
 
-    const [totalOutstanding, recoveredThisMonth, activeReminders, totalInvoices, recentInvoices] =
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+
+    const [
+      totalOutstanding,
+      recoveredThisMonth,
+      dueReminderRuns,
+      totalInvoices,
+      recentInvoices,
+      remindersSentLast7Days,
+      remindersDeliveredLast7Days,
+      remindersFailedLast7Days,
+      confirmedPaymentsThisMonth,
+      recentActivity,
+    ] =
       await Promise.all([
         prisma.invoice.aggregate({
           where: { userId, status: { in: ['overdue', 'pending'] } },
@@ -26,13 +41,22 @@ export async function GET() {
             userId,
             status: 'paid',
             paidAt: {
-              gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+              gte: monthStart,
             },
           },
           _sum: { amount: true },
         }),
-        prisma.reminderTemplate.count({
-          where: { userId, active: true },
+        prisma.reminderRun.count({
+          where: {
+            userId,
+            status: 'scheduled',
+            scheduledFor: {
+              lte: now,
+            },
+            invoice: {
+              status: { not: 'paid' },
+            },
+          },
         }),
         prisma.invoice.count({ where: { userId } }),
         prisma.invoice.findMany({
@@ -41,17 +65,76 @@ export async function GET() {
           orderBy: { dueDate: 'asc' },
           take: 5,
         }),
+        prisma.reminderRun.count({
+          where: {
+            userId,
+            sentAt: {
+              gte: sevenDaysAgo,
+            },
+          },
+        }),
+        prisma.reminderRun.count({
+          where: {
+            userId,
+            status: 'delivered',
+            deliveryConfirmedAt: {
+              gte: sevenDaysAgo,
+            },
+          },
+        }),
+        prisma.reminderRun.count({
+          where: {
+            userId,
+            status: 'failed',
+            updatedAt: {
+              gte: sevenDaysAgo,
+            },
+          },
+        }),
+        prisma.paymentEvent.count({
+          where: {
+            userId,
+            type: { in: ['payment_succeeded', 'manual_mark_paid'] },
+            createdAt: {
+              gte: monthStart,
+            },
+          },
+        }),
+        prisma.invoiceEvent.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          include: {
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+              },
+            },
+          },
+        }),
       ]);
 
     return Response.json({
       totalOutstanding: decimalToNumber(totalOutstanding._sum.amount || 0),
       overdueCount: totalOutstanding._count._all,
       recoveredThisMonth: decimalToNumber(recoveredThisMonth._sum.amount || 0),
-      activeReminders,
+      dueReminderRuns,
       totalInvoices,
+      remindersSentLast7Days,
+      remindersDeliveredLast7Days,
+      remindersFailedLast7Days,
+      confirmedPaymentsThisMonth,
       recentInvoices: recentInvoices.map((invoice) => ({
         ...invoice,
         amount: decimalToNumber(invoice.amount),
+      })),
+      recentActivity: recentActivity.map((event) => ({
+        id: event.id,
+        type: event.type,
+        message: event.message,
+        createdAt: event.createdAt.toISOString(),
+        invoice: event.invoice,
       })),
     });
   } catch (error) {

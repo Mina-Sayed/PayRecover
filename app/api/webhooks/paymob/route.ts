@@ -3,8 +3,21 @@ import { apiError } from '@/lib/api-response';
 import { extractPaymobWebhookCore, verifyPaymobWebhookSignature } from '@/lib/paymob';
 import { toDecimal } from '@/lib/money';
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
+import { decryptProviderConfig, type PaymobConnectionConfig } from '@/lib/provider-connections';
 
-async function findInvoiceFromWebhookReference(reference: string | null) {
+interface PaymobCallbackInvoiceTarget {
+  id: string;
+  userId: string;
+  invoiceNo: string;
+  providerConnection: {
+    id: string;
+    encryptedConfig: string;
+  } | null;
+}
+
+async function findInvoiceFromWebhookReference(
+  reference: string | null
+): Promise<PaymobCallbackInvoiceTarget | null> {
   if (!reference) {
     return null;
   }
@@ -15,15 +28,23 @@ async function findInvoiceFromWebhookReference(reference: string | null) {
   });
 
   if (directInvoice) {
-    return directInvoice;
+    return {
+      ...directInvoice,
+      providerConnection: null,
+    };
   }
 
   const paymentLink = await prisma.paymentLink.findFirst({
     where: {
-      provider: 'paymob',
       providerRef: reference,
     },
     select: {
+      providerConnection: {
+        select: {
+          id: true,
+          encryptedConfig: true,
+        },
+      },
       invoice: {
         select: {
           id: true,
@@ -34,7 +55,14 @@ async function findInvoiceFromWebhookReference(reference: string | null) {
     },
   });
 
-  return paymentLink?.invoice ?? null;
+  if (!paymentLink?.invoice) {
+    return null;
+  }
+
+  return {
+    ...paymentLink.invoice,
+    providerConnection: paymentLink.providerConnection,
+  };
 }
 
 export async function POST(request: Request) {
@@ -47,12 +75,52 @@ export async function POST(request: Request) {
       return apiError('Invalid Paymob payload', 400, 'VALIDATION_ERROR');
     }
 
-    const invoice = await findInvoiceFromWebhookReference(core.invoiceReference);
+    let invoice: PaymobCallbackInvoiceTarget | null = await findInvoiceFromWebhookReference(
+      core.invoiceReference
+    );
     if (!invoice) {
-      return apiError('Invoice not found for callback', 404, 'NOT_FOUND');
+      const directInvoice = core.invoiceReference
+        ? await prisma.invoice.findFirst({
+            where: { id: core.invoiceReference },
+            select: {
+              id: true,
+              userId: true,
+              invoiceNo: true,
+            },
+          })
+        : null;
+
+      if (!directInvoice) {
+        return apiError('Invoice not found for callback', 404, 'NOT_FOUND');
+      }
+
+      const paymentConnection = await prisma.paymentProviderConnection.findFirst({
+        where: {
+          userId: directInvoice.userId,
+          provider: 'paymob',
+        },
+        select: {
+          id: true,
+          encryptedConfig: true,
+        },
+      });
+
+      invoice = {
+        ...directInvoice,
+        providerConnection: paymentConnection,
+      } satisfies PaymobCallbackInvoiceTarget;
     }
 
-    if (!verifyPaymobWebhookSignature(payload)) {
+    if (!invoice.providerConnection?.encryptedConfig) {
+      return apiError('No Paymob connection found for callback', 400, 'VALIDATION_ERROR');
+    }
+
+    const connectionConfig = decryptProviderConfig<PaymobConnectionConfig>(
+      invoice.providerConnection.encryptedConfig
+    );
+    const providerConnectionId = invoice.providerConnection.id;
+
+    if (!verifyPaymobWebhookSignature(payload, connectionConfig.hmacSecret)) {
       return apiError('Invalid Paymob signature', 401, 'UNAUTHORIZED');
     }
 
@@ -77,6 +145,7 @@ export async function POST(request: Request) {
           userId: invoice.userId,
           provider: 'paymob',
           providerEventId: core.providerEventId,
+          providerConnectionId,
           type: core.isSuccess ? 'payment_succeeded' : 'payment_failed',
           amount: toDecimal(core.amountCents / 100),
           currency: core.currency,
@@ -97,7 +166,8 @@ export async function POST(request: Request) {
           where: {
             invoiceId: invoice.id,
             userId: invoice.userId,
-            provider: 'paymob',
+            providerConnectionId,
+            isPrimary: true,
             status: 'active',
           },
           data: {

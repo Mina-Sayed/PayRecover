@@ -2,11 +2,55 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
 import { isRecord } from '@/lib/validators';
+import {
+  toMessagingConnectionSummary,
+  toPaymentConnectionSummary,
+} from '@/lib/provider-connections';
 
 interface SettingsBody {
   businessName?: unknown;
   whatsappNumber?: unknown;
   name?: unknown;
+  notificationPrefs?: unknown;
+}
+
+async function loadSettingsPayload(userId: string) {
+  const [user, messagingConnection, paymentConnection] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        name: true,
+        email: true,
+        businessName: true,
+        whatsappNumber: true,
+        plan: true,
+        notifyPaymentReceived: true,
+        notifyDailySummary: true,
+        notifyOverdueAlerts: true,
+      },
+    }),
+    prisma.messagingProviderConnection.findFirst({
+      where: { userId },
+    }),
+    prisma.paymentProviderConnection.findFirst({
+      where: { userId },
+    }),
+  ]);
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    ...user,
+    notificationPrefs: {
+      paymentReceived: user.notifyPaymentReceived,
+      dailySummary: user.notifyDailySummary,
+      overdueAlerts: user.notifyOverdueAlerts,
+    },
+    messagingConnection: toMessagingConnectionSummary(messagingConnection),
+    paymentConnection: toPaymentConnectionSummary(paymentConnection),
+  };
 }
 
 export async function GET() {
@@ -16,22 +60,12 @@ export async function GET() {
       return apiError('Unauthorized', 401, 'UNAUTHORIZED');
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        name: true,
-        email: true,
-        businessName: true,
-        whatsappNumber: true,
-        plan: true,
-      },
-    });
-
-    if (!user) {
+    const payload = await loadSettingsPayload(session.user.id);
+    if (!payload) {
       return apiError('User not found', 404, 'NOT_FOUND');
     }
 
-    return Response.json(user);
+    return Response.json(payload);
   } catch (error) {
     console.error('Settings read error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');
@@ -64,21 +98,53 @@ export async function PUT(request: Request) {
     const nameField = normalizeNullableField(body.name);
     const businessNameField = normalizeNullableField(body.businessName);
     const whatsappNumberField = normalizeNullableField(body.whatsappNumber);
+    const notificationPrefs = (() => {
+      if (body.notificationPrefs === undefined) {
+        return { provided: false as const, valid: true as const };
+      }
 
-    if (!nameField.valid || !businessNameField.valid || !whatsappNumberField.valid) {
+      if (!isRecord(body.notificationPrefs)) {
+        return { provided: true as const, valid: false as const };
+      }
+
+      const paymentReceived = body.notificationPrefs.paymentReceived;
+      const dailySummary = body.notificationPrefs.dailySummary;
+      const overdueAlerts = body.notificationPrefs.overdueAlerts;
+
+      if (
+        typeof paymentReceived !== 'boolean' ||
+        typeof dailySummary !== 'boolean' ||
+        typeof overdueAlerts !== 'boolean'
+      ) {
+        return { provided: true as const, valid: false as const };
+      }
+
+      return {
+        provided: true as const,
+        valid: true as const,
+        value: {
+          notifyPaymentReceived: paymentReceived,
+          notifyDailySummary: dailySummary,
+          notifyOverdueAlerts: overdueAlerts,
+        },
+      };
+    })();
+
+    if (!nameField.valid || !businessNameField.valid || !whatsappNumberField.valid || !notificationPrefs.valid) {
       return apiError('Invalid settings payload', 400, 'VALIDATION_ERROR');
     }
 
-    if (!nameField.provided && !businessNameField.provided && !whatsappNumberField.provided) {
+    if (!nameField.provided && !businessNameField.provided && !whatsappNumberField.provided && !notificationPrefs.provided) {
       return apiError('No update fields provided', 400, 'VALIDATION_ERROR');
     }
 
-    const user = await prisma.user.update({
+    await prisma.user.update({
       where: { id: session.user.id },
       data: {
         ...(nameField.provided && { name: nameField.value }),
         ...(businessNameField.provided && { businessName: businessNameField.value }),
         ...(whatsappNumberField.provided && { whatsappNumber: whatsappNumberField.value }),
+        ...(notificationPrefs.provided && notificationPrefs.value),
       },
       select: {
         name: true,
@@ -86,10 +152,18 @@ export async function PUT(request: Request) {
         businessName: true,
         whatsappNumber: true,
         plan: true,
+        notifyPaymentReceived: true,
+        notifyDailySummary: true,
+        notifyOverdueAlerts: true,
       },
     });
 
-    return Response.json(user);
+    const payload = await loadSettingsPayload(session.user.id);
+    if (!payload) {
+      return apiError('User not found', 404, 'NOT_FOUND');
+    }
+
+    return Response.json(payload);
   } catch (error) {
     console.error('Settings update error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

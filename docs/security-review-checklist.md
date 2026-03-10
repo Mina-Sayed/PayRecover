@@ -44,8 +44,11 @@ Scope: Authentication, API validation, user isolation, secrets handling, depende
 
 ## 6) Open Risks / Deferred Scope
 
-- [ ] Live payment/WhatsApp/SMS provider credentials and webhook signing are deferred to Phase 3.
-- [ ] Notification preference persistence is currently local UI state.
+- [x] Tenant-owned provider credentials are encrypted at rest and stored through provider onboarding rather than app-wide env vars.
+- [x] Paymob callback verification uses tenant-resolved HMAC secrets before reconciling invoice payment truth.
+- [x] WATI webhook verification uses tenant-resolved webhook secrets before updating delivery state.
+- [ ] Real WATI and Paymob sandbox payloads still need contract validation before pilot rollout.
+- [x] Notification preferences are persisted on the tenant profile through the settings API.
 
 ## 7) UI Fetch Ordering Review (2026-02-24)
 
@@ -67,4 +70,5 @@ Scope: Authentication, API validation, user isolation, secrets handling, depende
 
 - [x] Paymob has been selected as the first payment provider and will require HMAC callback validation before production rollout.
 - [x] WATI has been selected as the first WhatsApp provider and will require webhook signature validation before production rollout.
-- [x] Provider secrets are documented only as environment-variable placeholders; no live credentials were introduced.
+- [x] Provider secrets are now tenant-owned, encrypted at rest, and kept server-side.
+- [x] Provider verification now backfills eligible unpaid invoices so payment links and reminder runs do not depend on manual invoice edits after onboarding.

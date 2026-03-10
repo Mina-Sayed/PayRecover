@@ -3,6 +3,8 @@ process.env.AUTH_URL = process.env.AUTH_URL || 'http://localhost:3000';
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/payrecover_test';
 process.env.CRON_SECRET = process.env.CRON_SECRET || 'test-cron-secret';
+process.env.PROVIDER_CONFIG_SECRET =
+  process.env.PROVIDER_CONFIG_SECRET || 'test-provider-config-secret';
 process.env.PAYMOB_PUBLIC_KEY = process.env.PAYMOB_PUBLIC_KEY || 'pk_test';
 process.env.PAYMOB_SECRET_KEY = process.env.PAYMOB_SECRET_KEY || 'sk_test';
 process.env.PAYMOB_INTEGRATION_ID = process.env.PAYMOB_INTEGRATION_ID || '123456';

@@ -35,6 +35,7 @@ const invoiceInclude: Prisma.InvoiceInclude = {
   paymentLinks: {
     where: {
       provider: 'paymob',
+      isPrimary: true,
       status: { in: [PaymentLinkStatus.active, PaymentLinkStatus.paid] },
     },
     orderBy: [{ status: 'asc' as const }, { createdAt: 'desc' as const }],

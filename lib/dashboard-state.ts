@@ -15,16 +15,17 @@ export interface InvoiceDraft {
 }
 
 interface DashboardSnapshotInput {
-  totalOutstanding: number;
-  recoveredThisMonth: number;
-  activeReminders: number;
+  remindersSentLast7Days: number;
+  remindersDeliveredLast7Days: number;
+  remindersFailedLast7Days: number;
+  dueReminderRuns: number;
   totalInvoices: number;
 }
 
 export interface DashboardSnapshot {
-  recoveredShare: number;
-  outstandingShare: number;
-  reminderCoverage: number;
+  deliveryRate: number;
+  failureRate: number;
+  queueCoverage: number;
 }
 
 function clampPercent(value: number): number {
@@ -33,18 +34,22 @@ function clampPercent(value: number): number {
 }
 
 export function calculateDashboardSnapshot(input: DashboardSnapshotInput): DashboardSnapshot {
-  const totalFinancial = input.totalOutstanding + input.recoveredThisMonth;
-  const recoveredShare =
-    totalFinancial > 0 ? (input.recoveredThisMonth / totalFinancial) * 100 : 0;
-  const outstandingShare =
-    totalFinancial > 0 ? (input.totalOutstanding / totalFinancial) * 100 : 0;
-  const reminderCoverage =
-    input.totalInvoices > 0 ? (input.activeReminders / input.totalInvoices) * 100 : 0;
+  const deliveryRate =
+    input.remindersSentLast7Days > 0
+      ? (input.remindersDeliveredLast7Days / input.remindersSentLast7Days) * 100
+      : 0;
+  const processedReminderRuns = input.remindersDeliveredLast7Days + input.remindersFailedLast7Days;
+  const failureRate =
+    processedReminderRuns > 0
+      ? (input.remindersFailedLast7Days / processedReminderRuns) * 100
+      : 0;
+  const queueCoverage =
+    input.totalInvoices > 0 ? (input.dueReminderRuns / input.totalInvoices) * 100 : 0;
 
   return {
-    recoveredShare: clampPercent(recoveredShare),
-    outstandingShare: clampPercent(outstandingShare),
-    reminderCoverage: clampPercent(reminderCoverage),
+    deliveryRate: clampPercent(deliveryRate),
+    failureRate: clampPercent(failureRate),
+    queueCoverage: clampPercent(queueCoverage),
   };
 }
 

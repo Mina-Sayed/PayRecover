@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock,
   ArrowUpRight,
-  ArrowDownRight,
   Users,
   Activity,
 } from 'lucide-react';
@@ -32,9 +31,23 @@ interface DashboardStatsResponse {
   totalOutstanding: number;
   overdueCount: number;
   recoveredThisMonth: number;
-  activeReminders: number;
+  dueReminderRuns: number;
   totalInvoices: number;
+  remindersSentLast7Days: number;
+  remindersDeliveredLast7Days: number;
+  remindersFailedLast7Days: number;
+  confirmedPaymentsThisMonth: number;
   recentInvoices: DashboardInvoice[];
+  recentActivity: Array<{
+    id: string;
+    type: string;
+    message: string;
+    createdAt: string;
+    invoice: {
+      id: string;
+      invoiceNo: string;
+    } | null;
+  }>;
 }
 
 function DashboardLoadingState() {
@@ -118,9 +131,10 @@ export default function DashboardOverview() {
   }
 
   const snapshot = calculateDashboardSnapshot({
-    totalOutstanding: data.totalOutstanding,
-    recoveredThisMonth: data.recoveredThisMonth,
-    activeReminders: data.activeReminders,
+    remindersSentLast7Days: data.remindersSentLast7Days,
+    remindersDeliveredLast7Days: data.remindersDeliveredLast7Days,
+    remindersFailedLast7Days: data.remindersFailedLast7Days,
+    dueReminderRuns: data.dueReminderRuns,
     totalInvoices: data.totalInvoices,
   });
 
@@ -169,45 +183,44 @@ export default function DashboardOverview() {
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-slate-500">Active Reminders</h3>
+            <h3 className="text-sm font-medium text-slate-500">Due Reminder Runs</h3>
             <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-slate-900">{data.activeReminders}</span>
+            <span className="text-3xl font-bold text-slate-900">{data.dueReminderRuns}</span>
             <span className="text-xs font-medium text-blue-600 flex items-center">
               <ArrowUpRight className="w-3 h-3 mr-0.5" />
-              Active
+              Due now
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">Configured reminder steps across your templates</p>
+          <p className="text-xs text-slate-500 mt-2">Scheduled WhatsApp reminder runs awaiting dispatch</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-slate-500">Total Invoices</h3>
+            <h3 className="text-sm font-medium text-slate-500">Confirmed Payments</h3>
             <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
               <Users className="w-4 h-4" />
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-slate-900">{data.totalInvoices}</span>
+            <span className="text-3xl font-bold text-slate-900">{data.confirmedPaymentsThisMonth}</span>
             <span className="text-xs font-medium text-emerald-600 flex items-center">
-              <ArrowDownRight className="w-3 h-3 mr-0.5" />
-              Live
+              <ArrowUpRight className="w-3 h-3 mr-0.5" />
+              This month
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">Tracked across your account</p>
+          <p className="text-xs text-slate-500 mt-2">Validated payment confirmations and manual settlements</p>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-slate-900">Recovery Snapshot</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Operational Snapshot</h3>
           <p className="text-sm text-slate-500">
-            Based on real aggregate totals. Historical event tracking is not live yet, so this panel
-            shows truthful current-state ratios instead of a synthetic chart.
+            Built from reminder-run and payment-event records that already exist in the system.
           </p>
         </div>
 
@@ -215,33 +228,33 @@ export default function DashboardOverview() {
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
             <div className="flex items-center gap-2 text-emerald-700 mb-3">
               <CheckCircle2 className="w-4 h-4" />
-              <span className="text-sm font-medium">Recovered share</span>
+              <span className="text-sm font-medium">Delivery rate</span>
             </div>
-            <div className="text-3xl font-bold text-slate-900">{snapshot.recoveredShare}%</div>
+            <div className="text-3xl font-bold text-slate-900">{snapshot.deliveryRate}%</div>
             <p className="text-xs text-slate-600 mt-2">
-              Portion of tracked value recovered this month versus currently outstanding.
+              Delivered reminder runs as a share of sent reminder runs in the last 7 days.
             </p>
           </div>
 
           <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
             <div className="flex items-center gap-2 text-amber-700 mb-3">
               <Activity className="w-4 h-4" />
-              <span className="text-sm font-medium">Outstanding share</span>
+              <span className="text-sm font-medium">Failure rate</span>
             </div>
-            <div className="text-3xl font-bold text-slate-900">{snapshot.outstandingShare}%</div>
+            <div className="text-3xl font-bold text-slate-900">{snapshot.failureRate}%</div>
             <p className="text-xs text-slate-600 mt-2">
-              Portion of tracked value still waiting to be collected.
+              Failed reminder runs as a share of delivered plus failed runs in the last 7 days.
             </p>
           </div>
 
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
             <div className="flex items-center gap-2 text-blue-700 mb-3">
               <Clock className="w-4 h-4" />
-              <span className="text-sm font-medium">Reminder coverage</span>
+              <span className="text-sm font-medium">Queue coverage</span>
             </div>
-            <div className="text-3xl font-bold text-slate-900">{snapshot.reminderCoverage}%</div>
+            <div className="text-3xl font-bold text-slate-900">{snapshot.queueCoverage}%</div>
             <p className="text-xs text-slate-600 mt-2">
-              Active reminder steps relative to the number of invoices currently tracked.
+              Due reminder runs relative to the number of invoices currently tracked.
             </p>
           </div>
         </div>
@@ -249,8 +262,47 @@ export default function DashboardOverview() {
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-medium text-slate-900">Current operational note</p>
           <p className="text-sm text-slate-600 mt-1">
-            Trend charts should return after reminder-delivery and payment-event history is stored.
+            The dashboard now reads from reminder-run and payment-event history where available. Deep trend
+            analytics can layer on top later without changing invoice truth.
           </p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-slate-900">Recent Activity</h3>
+          <p className="text-sm text-slate-500">Latest recovery actions across invoices, reminders, and payments.</p>
+        </div>
+
+        <div className="space-y-3">
+          {data.recentActivity.length > 0 ? (
+            data.recentActivity.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">{event.message}</p>
+                  <p className="text-xs text-slate-500">
+                    {event.invoice?.invoiceNo ? `${event.invoice.invoiceNo} • ` : ''}
+                    {new Date(event.createdAt).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  {event.type.replaceAll('_', ' ')}
+                </p>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+              No invoice activity has been recorded yet.
+            </div>
+          )}
         </div>
       </div>
 

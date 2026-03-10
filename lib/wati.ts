@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getEnv, requireEnv } from '@/lib/env';
+import type { WatiConnectionConfig } from '@/lib/provider-connections';
 
 export interface WatiTemplateSendInput {
   phone: string;
@@ -13,8 +13,8 @@ export interface WatiTemplateSendResult {
   rawPayload: unknown;
 }
 
-function getWatiBaseUrl(): string {
-  const configured = requireEnv('WATI_API_BASE_URL');
+function getWatiBaseUrl(config: WatiConnectionConfig): string {
+  const configured = config.apiBaseUrl;
   return configured.endsWith('/') ? configured.slice(0, -1) : configured;
 }
 
@@ -22,18 +22,15 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[^\d+]/g, '');
 }
 
-export function isWatiConfigured(): boolean {
-  return Boolean(getEnv('WATI_API_BASE_URL') && getEnv('WATI_ACCESS_TOKEN') && getEnv('WATI_WEBHOOK_SECRET'));
-}
-
 export async function sendWatiTemplateMessage(
-  input: WatiTemplateSendInput
+  input: WatiTemplateSendInput,
+  config: WatiConnectionConfig
 ): Promise<WatiTemplateSendResult> {
-  const endpoint = `${getWatiBaseUrl()}/api/v1/sendTemplateMessages`;
+  const endpoint = `${getWatiBaseUrl(config)}/api/v1/sendTemplateMessages`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${requireEnv('WATI_ACCESS_TOKEN')}`,
+      Authorization: `Bearer ${config.accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -77,15 +74,18 @@ function collectCandidateSignatures(request: Request): string[] {
   return candidates.filter((value): value is string => Boolean(value && value.trim().length > 0));
 }
 
-export function verifyWatiWebhookSignature(request: Request, rawBody: string): boolean {
-  const secret = requireEnv('WATI_WEBHOOK_SECRET');
+export function verifyWatiWebhookSignature(
+  request: Request,
+  rawBody: string,
+  webhookSecret: string
+): boolean {
   const candidates = collectCandidateSignatures(request);
   if (candidates.length === 0) {
     return false;
   }
 
-  const sha256 = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  const sha512 = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
+  const sha256 = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+  const sha512 = crypto.createHmac('sha512', webhookSecret).update(rawBody).digest('hex');
   const prefixedSha256 = `sha256=${sha256}`;
 
   return candidates.some((candidate) => {
@@ -117,4 +117,40 @@ export function mapWatiDeliveryStatus(payload: Record<string, unknown>): {
   }
 
   return { providerMessageId, nextStatus: null };
+}
+
+export async function verifyWatiConnection(config: WatiConnectionConfig): Promise<{
+  ok: boolean;
+  error: string | null;
+}> {
+  try {
+    const endpoint = `${getWatiBaseUrl(config)}/api/v1/sendTemplateMessages`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: 'WATI credentials were rejected' };
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      return { ok: true, error: null };
+    }
+
+    if (response.ok) {
+      return { ok: true, error: null };
+    }
+
+    return { ok: false, error: `Unexpected WATI status ${response.status}` };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to reach WATI',
+    };
+  }
 }

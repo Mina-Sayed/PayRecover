@@ -41,14 +41,44 @@ vi.mock('motion/react', async () => {
   };
 });
 
-describe('settings provider selection', () => {
-  it('shows Paymob and WATI as the chosen rollout providers', async () => {
+describe('settings provider connections', () => {
+  it('shows real WATI and Paymob connection actions in the integrations tab', async () => {
     apiFetchMock.mockResolvedValue({
       name: 'Mina',
       email: 'mina@example.com',
       businessName: 'PayRecover',
       whatsappNumber: '+201000000000',
       plan: 'free',
+      notificationPrefs: {
+        paymentReceived: true,
+        dailySummary: true,
+        overdueAlerts: true,
+      },
+      messagingConnection: {
+        id: null,
+        provider: 'wati',
+        mode: 'sandbox',
+        status: 'not_connected',
+        accountLabel: null,
+        senderIdentifier: null,
+        verifiedAt: null,
+        lastHealthcheckAt: null,
+        lastError: null,
+        hasConfig: false,
+        configPreview: null,
+      },
+      paymentConnection: {
+        id: null,
+        provider: 'paymob',
+        mode: 'sandbox',
+        status: 'not_connected',
+        accountLabel: null,
+        verifiedAt: null,
+        lastHealthcheckAt: null,
+        lastError: null,
+        hasConfig: false,
+        configPreview: null,
+      },
     });
 
     render(React.createElement(SettingsPage));
@@ -61,7 +91,61 @@ describe('settings provider selection', () => {
 
     expect(await screen.findByText('Paymob')).toBeTruthy();
     expect(screen.getByText('WATI')).toBeTruthy();
-    expect(screen.getByText(/PAYMOB_PUBLIC_KEY/)).toBeTruthy();
-    expect(screen.getByText(/WATI_WEBHOOK_SECRET/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save WATI Connection' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Verify WATI' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save Paymob Connection' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Verify Paymob' })).toBeTruthy();
+  });
+
+  it('shows persisted notification controls in the notifications tab', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({
+      name: 'Mina',
+      email: 'mina@example.com',
+      businessName: 'PayRecover',
+      whatsappNumber: '+201000000000',
+      plan: 'free',
+      notificationPrefs: {
+        paymentReceived: false,
+        dailySummary: true,
+        overdueAlerts: false,
+      },
+      messagingConnection: {
+        id: null,
+        provider: 'wati',
+        mode: 'sandbox',
+        status: 'not_connected',
+        accountLabel: null,
+        senderIdentifier: null,
+        verifiedAt: null,
+        lastHealthcheckAt: null,
+        lastError: null,
+        hasConfig: false,
+        configPreview: null,
+      },
+      paymentConnection: {
+        id: null,
+        provider: 'paymob',
+        mode: 'sandbox',
+        status: 'not_connected',
+        accountLabel: null,
+        verifiedAt: null,
+        lastHealthcheckAt: null,
+        lastError: null,
+        hasConfig: false,
+        configPreview: null,
+      },
+    });
+
+    render(React.createElement(SettingsPage));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/settings');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+
+    expect(await screen.findByRole('button', { name: 'Save Notifications' })).toBeTruthy();
+    expect(screen.getByText(/stored on your tenant profile/i)).toBeTruthy();
   });
 });

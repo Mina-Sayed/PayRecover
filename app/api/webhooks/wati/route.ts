@@ -2,15 +2,12 @@ import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
 import { mapWatiDeliveryStatus, verifyWatiWebhookSignature } from '@/lib/wati';
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
+import { decryptProviderConfig, type WatiConnectionConfig } from '@/lib/provider-connections';
 
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
     const payload = JSON.parse(rawBody) as Record<string, unknown>;
-
-    if (!verifyWatiWebhookSignature(request, rawBody)) {
-      return apiError('Invalid WATI signature', 401, 'UNAUTHORIZED');
-    }
 
     const { providerMessageId, nextStatus } = mapWatiDeliveryStatus(payload);
     if (!providerMessageId || !nextStatus) {
@@ -23,11 +20,28 @@ export async function POST(request: Request) {
         id: true,
         invoiceId: true,
         userId: true,
+        messagingConnection: {
+          select: {
+            encryptedConfig: true,
+          },
+        },
       },
     });
 
     if (!reminderRun) {
       return apiError('Reminder run not found', 404, 'NOT_FOUND');
+    }
+
+    if (!reminderRun.messagingConnection?.encryptedConfig) {
+      return apiError('No WATI connection found for reminder run', 400, 'VALIDATION_ERROR');
+    }
+
+    const connection = decryptProviderConfig<WatiConnectionConfig>(
+      reminderRun.messagingConnection.encryptedConfig
+    );
+
+    if (!verifyWatiWebhookSignature(request, rawBody, connection.webhookSecret)) {
+      return apiError('Invalid WATI signature', 401, 'UNAUTHORIZED');
     }
 
     await prisma.reminderRun.update({

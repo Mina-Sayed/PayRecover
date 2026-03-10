@@ -1,6 +1,6 @@
 # PayRecover
 
-PayRecover is a Next.js SaaS MVP for small MENA businesses that need to recover unpaid invoices through structured reminder workflows. The current codebase already supports account registration, credential-based sign-in, protected dashboard routes, invoice and client management, reminder template management, and business profile settings.
+PayRecover is a Next.js SaaS for small MENA businesses that need to recover unpaid invoices through structured reminder workflows. The product is a collections workflow engine, not a generic invoicing app or shared provider infrastructure layer.
 
 ## Current Product Scope
 
@@ -10,15 +10,16 @@ PayRecover is a Next.js SaaS MVP for small MENA businesses that need to recover 
 - Invoice list, search, filter, pagination, create, edit, mark-as-paid, and delete flows
 - Reminder template CRUD for WhatsApp and SMS sequences
 - Business profile settings read/update flow
+- Tenant-owned WATI and Paymob connection onboarding
+- Internal reminder dispatch endpoint and provider webhook handlers
 
-Deferred scope still visible in the UI:
+Current M1 live-loop status:
 
-- Live WhatsApp delivery through WATI
-- Provider-managed message-status webhooks
-- Paymob payment onboarding
-- Payment links and webhooks
-- Persistent notification preferences
-- Historical analytics beyond aggregate snapshots
+- Payment-link creation, reminder-run materialization, reminder dispatch, and webhook reconciliation exist in code
+- Provider connections are tenant-owned and encrypted at rest
+- Notification preferences are persisted on the tenant profile
+- The loop is still not pilot-proven until real WATI and Paymob sandbox traffic is validated end to end
+- Historical analytics beyond aggregate snapshots remain deferred
 
 ## Tech Stack
 
@@ -55,15 +56,10 @@ Required by the running application:
 | `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma |
 | `AUTH_SECRET` | Yes | NextAuth signing secret |
 | `AUTH_URL` | Yes | Base application URL for NextAuth |
-| `PAYMOB_PUBLIC_KEY` | Planned | Paymob hosted checkout public key |
-| `PAYMOB_SECRET_KEY` | Planned | Paymob server-side secret key |
-| `PAYMOB_INTEGRATION_ID` | Planned | Paymob integration identifier |
-| `PAYMOB_HMAC_SECRET` | Planned | Paymob callback signature validation |
-| `WATI_API_BASE_URL` | Planned | WATI API host/base URL |
-| `WATI_ACCESS_TOKEN` | Planned | WATI API access token |
-| `WATI_WEBHOOK_SECRET` | Planned | WATI webhook signature validation |
+| `CRON_SECRET` | Yes for live reminders | Authenticates the internal reminder-dispatch endpoint |
+| `PROVIDER_CONFIG_SECRET` | Yes for tenant-owned providers | Encrypts provider credentials stored per tenant |
 
-The provider variables are documented now so the next rollout can wire Paymob and WATI without another config cleanup pass.
+Provider credentials are tenant-owned and stored through provider-connection onboarding in the product. `PAYMOB_*` and `WATI_*` are no longer the mainline application configuration model for live tenant orchestration.
 
 ## Local Development
 

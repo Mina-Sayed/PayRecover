@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
 import { ensureInvoiceOperationalArtifacts } from '@/lib/recovery-loop';
 import { toPaymentLinkSummary } from '@/lib/invoice-serialization';
-import { isPaymobConfigured } from '@/lib/paymob';
+import { getVerifiedPaymentConnection } from '@/lib/provider-connections';
 
 export async function POST(
   _request: Request,
@@ -15,8 +15,9 @@ export async function POST(
       return apiError('Unauthorized', 401, 'UNAUTHORIZED');
     }
 
-    if (!isPaymobConfigured()) {
-      return apiError('Paymob is not configured', 400, 'VALIDATION_ERROR');
+    const paymentConnection = await getVerifiedPaymentConnection(prisma, session.user.id);
+    if (!paymentConnection) {
+      return apiError('No verified Paymob connection found', 400, 'VALIDATION_ERROR');
     }
 
     const { id } = await params;
@@ -35,7 +36,8 @@ export async function POST(
       where: {
         invoiceId: id,
         userId: session.user.id,
-        provider: 'paymob',
+        providerConnectionId: paymentConnection.record.id,
+        isPrimary: true,
         status: { in: ['active', 'paid'] },
       },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],

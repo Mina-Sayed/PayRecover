@@ -19,6 +19,37 @@ interface Reminder {
   order: number;
 }
 
+function getReminderExecutionState(reminder: Reminder): {
+  label: string;
+  tone: string;
+} {
+  if (!reminder.active) {
+    return {
+      label: 'Paused',
+      tone: 'bg-slate-100 text-slate-500',
+    };
+  }
+
+  if (reminder.channel === 'sms') {
+    return {
+      label: 'Template only',
+      tone: 'bg-amber-100 text-amber-700',
+    };
+  }
+
+  if (!reminder.providerTemplateName) {
+    return {
+      label: 'Needs WATI mapping',
+      tone: 'bg-amber-100 text-amber-700',
+    };
+  }
+
+  return {
+    label: 'Executable',
+    tone: 'bg-emerald-100 text-emerald-700',
+  };
+}
+
 function RemindersLoadingState() {
   return (
     <div className="space-y-6">
@@ -242,14 +273,17 @@ export default function AutomationsPage() {
           </div>
 
           <div className="space-y-6">
-            {visibleReminders.map((reminder, index) => (
-              <motion.div
-                key={reminder.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2, delay: index * 0.03 }}
-                className="border border-slate-200 rounded-xl p-5 relative"
-              >
+            {visibleReminders.map((reminder, index) => {
+              const executionState = getReminderExecutionState(reminder);
+
+              return (
+                <motion.div
+                  key={reminder.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: index * 0.03 }}
+                  className="border border-slate-200 rounded-xl p-5 relative"
+                >
                 <div className="absolute -left-3 top-6 bg-white border border-slate-200 rounded-full p-1 text-slate-400">
                   <Clock className="w-4 h-4" />
                 </div>
@@ -280,6 +314,11 @@ export default function AutomationsPage() {
                         }`}
                       >
                         {reminder.active ? 'Active' : 'Paused'}
+                      </span>
+                      <span
+                        className={`text-xs font-medium px-2 py-1 rounded-md ${executionState.tone}`}
+                      >
+                        {executionState.label}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -348,8 +387,9 @@ export default function AutomationsPage() {
                     </div>
                   )}
                 </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
 
             {visibleReminders.length === 0 && (
               <div className="text-center py-12">

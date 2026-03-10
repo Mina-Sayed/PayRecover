@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-PayRecover is currently implemented as a modular monolith focused on one business problem: helping a business owner track unpaid invoices and prepare reminder sequences that can later be connected to WhatsApp, SMS, and payment providers.
+PayRecover is currently implemented as a modular monolith focused on one business problem: orchestrating collections workflows for unpaid invoices. The system is responsible for invoice recovery state, reminder execution, payment-link attachment, callback reconciliation, and suppression of future reminders after confirmed payment.
 
 ## 2. What Exists Today
 
@@ -22,6 +22,12 @@ PayRecover is currently implemented as a modular monolith focused on one busines
 - `Client`
 - `Invoice`
 - `ReminderTemplate`
+- `MessagingProviderConnection`
+- `PaymentProviderConnection`
+- `PaymentLink`
+- `PaymentEvent`
+- `ReminderRun`
+- `DeliveryAttempt`
 - `Account`, `Session`, `VerificationToken` from NextAuth
 
 ### Core business rules already implemented
@@ -32,6 +38,9 @@ PayRecover is currently implemented as a modular monolith focused on one busines
 - Client records are reused by `userId + phone`
 - Invoice status can be `pending`, `overdue`, or `paid`
 - Marking an invoice as `paid` sets `paidAt`
+- Provider connections are tenant-owned rather than shared across the app
+- Payment links are attached per invoice through a tenant payment connection
+- Reminder runs and delivery attempts are stored separately from reminder templates
 - Dashboard stats aggregate outstanding, paid-this-month, active reminders, and total invoices
 
 ## 3. Runtime Architecture
@@ -178,9 +187,8 @@ sequenceDiagram
 3. The owner creates client-linked invoices.
 4. The owner monitors outstanding balances and paid invoices.
 5. The owner configures reminder timing and templates.
-6. The owner updates business profile data that will later feed outbound communication and payment-link flows.
-
-Today, the product stops at workflow preparation and internal tracking. It does not yet execute live reminder delivery or payment collection.
+6. The owner connects tenant-owned messaging and payment provider accounts.
+7. The system materializes reminder runs, creates one active primary payment link, dispatches due reminders, reconciles provider callbacks, and suppresses future reminders after verified payment.
 
 ## 7. Current Strengths
 
@@ -194,32 +202,31 @@ Today, the product stops at workflow preparation and internal tracking. It does 
 
 ### Product gaps
 
-- Reminder templates are stored, but no scheduler sends them
-- Payment gateway cards exist in UI, but there is no onboarding or payment-link generation
-- WhatsApp delivery is explicitly marked "Coming soon"
+- Provider onboarding is real for one messaging provider and one payment provider only
+- The first live loop exists in code but still needs real sandbox verification with WATI and Paymob accounts
 - Dashboard trend chart is synthetic, not backed by historical event data
 - Notification preferences are local component state only
+- SMS remains configuration-only; WhatsApp is the only live dispatch path targeted in M1
 
 ### Data model gaps
 
-- No payment transaction model
-- No delivery log / message event model
-- No invoice event history
 - No role/team model for multi-user businesses
+- No dispute model
+- No partial-payment allocation model
 
 ### Operational gaps
 
-- No queue or worker layer for scheduled sends
-- No webhook receiver for provider callbacks
+- Internal cron dispatch exists, but real deployment, monitoring, and failure alerting are still required
+- Webhook receiver routes exist, but provider payloads still need validation against real sandbox traffic
 - No observability pipeline for outbound delivery, payment conversion, or failures
-- No background reconciliation jobs
+- No background reconciliation jobs beyond the current first-loop dispatcher
 
 ## 9. Recommended Next Architecture Step
 
-Keep the current modular monolith for the next stage, but add a dedicated automation and payments domain around it:
+Keep the current modular monolith for the next stage and harden the existing first live loop before adding breadth:
 
-- `payment_accounts`, `payment_links`, `payment_events`
-- `reminder_runs`, `message_deliveries`, `delivery_attempts`
-- a scheduler/worker boundary for time-based execution
-- webhook endpoints for payment and messaging providers
-- analytics tables based on actual events instead of derived estimates
+- validate WATI and Paymob contracts with real tenant sandbox accounts
+- deploy the internal cron dispatcher with secure secret handling and monitoring
+- add pilot-ready logging and alerting around send failures, callback rejection, and suppression
+- keep provider ownership tenant-scoped; do not move back toward shared provider infrastructure
+- add event-backed analytics only after the live loop is trusted

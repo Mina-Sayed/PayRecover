@@ -4,96 +4,76 @@
 
 | Milestone | Goal | Main deliverables | Exit signal |
 | --- | --- | --- | --- |
-| M0 | Documentation and foundation alignment | Updated README, architecture/spec/plan docs, environment cleanup | Team can onboard from docs without guesswork |
-| M1 | Operational invoice workspace | Invoice timeline, aging logic, bulk actions, truthful dashboard states | Users can manage collections work daily |
-| M2 | Live reminder automation | Scheduler, reminder runs, delivery logs, provider abstraction | A reminder can be scheduled, sent, and tracked |
-| M3 | Payment recovery loop | Payment links, provider onboarding, webhook reconciliation | Reminder-to-payment flow works end to end |
-| M4 | Product expansion | Analytics, localization, vertical kits, plan packaging | Product is region-aware and commercially differentiated |
+| M0 | Truthfulness reset | Remove fake UI/actions, align docs, clarify product boundary | Product copy matches actual behavior |
+| M1 | First live recovery loop | Tenant-owned WATI + Paymob onboarding, payment links, reminder dispatch, webhook reconciliation, suppression | One invoice can move from unpaid to paid end to end |
+| M2 | Operator readiness | Failure handling, persisted notifications, import/bulk workflows, event-backed visibility | Small businesses can run daily collections work in the app |
+| M3 | Expansion | Additional providers, localized onboarding, deeper analytics | Product grows without losing its collections-first focus |
 
 ## Milestone Details
 
-### M0: Documentation and architecture alignment
+### M0: Truthfulness reset
 
 Deliverables:
 
-- current-state architecture documentation
-- end-to-end user flow documentation
-- product spec
-- implementation plan
-- milestone map
-- ADR for keeping the modular monolith architecture
+- remove dead or fake links and labels
+- make settings/invoice/reminder copy reflect real product state
+- align README and architecture docs with tenant-owned provider strategy
 
 Acceptance:
 
-- repo docs describe the actual codebase
-- current gaps are explicit
+- no major UI surface implies a live behavior that does not exist
+- repo docs describe the current codebase accurately
 
-### M1: Operational invoice workspace
+### M1: First live recovery loop
 
 Deliverables:
 
-- invoice event history
-- aging buckets and due-date derived status
-- bulk mark-paid / archive / export actions
-- invoice detail drawer or dedicated page
-- import path for existing customer lists
+- WATI messaging connection onboarding
+- Paymob payment connection onboarding
+- one active primary payment link per invoice/provider connection
+- reminder-run materialization and cron dispatch
+- delivery attempts and callback ingestion
+- verified payment reconciliation and reminder suppression
+- auditable invoice timeline
 
 Acceptance:
 
-- collections work no longer depends on hidden row state and menu-only actions
-- overdue and due-soon logic is deterministic
+- payment truth comes from validated provider events or manual mark-paid actions
+- future reminder runs are suppressed after confirmed payment
+- existing unpaid invoices become operational after provider verification
 
-### M2: Live reminder automation
+### M2: Operator readiness
 
 Deliverables:
 
-- reminder execution schema
-- scheduled reminder jobs
-- WATI delivery attempt logs
-- pause, retry, and suppression logic
-- WATI provider configuration state
+- failed-send and failed-payment operator states
+- import/bulk collections workflows
+- event-backed dashboard metrics
+- provider onboarding guidance and health visibility
 
 Acceptance:
 
-- the product can explain what was scheduled, what was sent, and what failed
+- an operator can identify what needs action without reading logs
+- dashboard metrics reflect stored events instead of aggregate snapshots only
 
-### M3: Payment recovery loop
+### M3: Expansion
 
 Deliverables:
 
-- Paymob account/config model
-- Paymob invoice payment links / checkout intents
-- Paymob payment callbacks
-- invoice reconciliation rules
-- reminder suppression after payment
+- second-provider support where commercially justified
+- localization and Arabic/RTL improvements
+- deeper recovery analytics
+- onboarding presets by business type
 
 Acceptance:
 
-- invoice payment state updates without manual intervention
-- Paymob callbacks are auditable and idempotent
-
-### M4: Analytics, localization, and commercialization
-
-Deliverables:
-
-- Arabic/RTL support
-- event-backed analytics
-- business-type onboarding presets
-- pricing and entitlement model
-- team access groundwork
-
-Acceptance:
-
-- product feels intentionally built for MENA SMB operators
-- product analytics show operational and commercial health
+- growth does not force PayRecover into shared provider infrastructure or ERP scope
 
 ## Dependency Map
 
 ```mermaid
 flowchart TD
-    M0[M0 Docs + Alignment] --> M1[M1 Invoice Operations]
-    M1 --> M2[M2 Reminder Automation]
-    M1 --> M3[M3 Payments]
-    M2 --> M3
-    M3 --> M4[M4 Analytics + Localization + Commercialization]
+    M0[M0 Truthfulness Reset] --> M1[M1 First Live Recovery Loop]
+    M1 --> M2[M2 Operator Readiness]
+    M2 --> M3[M3 Expansion]
 ```

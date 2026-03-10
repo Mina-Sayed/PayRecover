@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { encryptProviderConfig } from '@/lib/provider-connections';
 
 async function loadPaymobWebhookRoute() {
   vi.resetModules();
@@ -50,10 +51,23 @@ async function loadPaymobWebhookRoute() {
 describe('/api/webhooks/paymob route handler', () => {
   it('marks invoices paid and suppresses future reminder runs for verified success callbacks', async () => {
     const { route, prismaMock } = await loadPaymobWebhookRoute();
-    prismaMock.invoice.findFirst.mockResolvedValue({
-      id: 'inv-1',
-      userId: 'user-1',
-      invoiceNo: 'INV-2026-001',
+    prismaMock.invoice.findFirst.mockResolvedValue(null);
+    prismaMock.paymentLink.findFirst.mockResolvedValue({
+      providerConnection: {
+        id: 'pay-1',
+        encryptedConfig: encryptProviderConfig({
+          publicKey: 'pk_test_123',
+          secretKey: 'sk_test_123',
+          integrationId: '123456',
+          hmacSecret: 'hmac',
+          apiBaseUrl: 'https://accept.paymob.com',
+        }),
+      },
+      invoice: {
+        id: 'inv-1',
+        userId: 'user-1',
+        invoiceNo: 'INV-2026-001',
+      },
     });
     prismaMock.paymentEvent.findUnique.mockResolvedValue(null);
 
@@ -73,6 +87,7 @@ describe('/api/webhooks/paymob route handler', () => {
         data: expect.objectContaining({
           invoiceId: 'inv-1',
           provider: 'paymob',
+          providerConnectionId: 'pay-1',
           type: 'payment_succeeded',
         }),
       })

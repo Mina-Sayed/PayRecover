@@ -11,8 +11,14 @@ async function loadDashboardStatsRoute() {
       count: vi.fn(),
       findMany: vi.fn(),
     },
-    reminderTemplate: {
+    reminderRun: {
       count: vi.fn(),
+    },
+    paymentEvent: {
+      count: vi.fn(),
+    },
+    invoiceEvent: {
+      findMany: vi.fn(),
     },
   };
 
@@ -41,9 +47,15 @@ describe('/api/dashboard/stats route handler', () => {
     prismaMock.invoice.aggregate
       .mockResolvedValueOnce({ _sum: { amount: 1200 }, _count: { _all: 2 } })
       .mockResolvedValueOnce({ _sum: { amount: 400 } });
-    prismaMock.reminderTemplate.count.mockResolvedValue(3);
+    prismaMock.reminderRun.count
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(6)
+      .mockResolvedValueOnce(2);
+    prismaMock.paymentEvent.count.mockResolvedValue(4);
     prismaMock.invoice.count.mockResolvedValue(9);
     prismaMock.invoice.findMany.mockResolvedValue([]);
+    prismaMock.invoiceEvent.findMany.mockResolvedValue([]);
 
     const response = await route.GET();
     const body = await response.json();
@@ -53,8 +65,12 @@ describe('/api/dashboard/stats route handler', () => {
       totalOutstanding: 1200,
       overdueCount: 2,
       recoveredThisMonth: 400,
-      activeReminders: 3,
+      dueReminderRuns: 3,
       totalInvoices: 9,
+      remindersSentLast7Days: 8,
+      remindersDeliveredLast7Days: 6,
+      remindersFailedLast7Days: 2,
+      confirmedPaymentsThisMonth: 4,
     });
     expect(typeof body.overdueCount).toBe('number');
     expect(prismaMock.invoice.updateMany).toHaveBeenCalledTimes(2);

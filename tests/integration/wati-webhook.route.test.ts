@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { encryptProviderConfig } from '@/lib/provider-connections';
 
 async function loadWatiWebhookRoute() {
   vi.resetModules();
@@ -33,6 +34,13 @@ describe('/api/webhooks/wati route handler', () => {
       id: 'run-1',
       invoiceId: 'inv-1',
       userId: 'user-1',
+      messagingConnection: {
+        encryptedConfig: encryptProviderConfig({
+          apiBaseUrl: 'https://wati.example.com',
+          accessToken: 'token',
+          webhookSecret: 'secret',
+        }),
+      },
     });
 
     const response = await route.POST(

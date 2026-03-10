@@ -73,33 +73,35 @@ describe('dashboard state helpers', () => {
     expect(ordered.map((item) => item.order)).toEqual([0, 1]);
   });
 
-  it('calculates dashboard snapshot ratios from real totals', () => {
+  it('calculates dashboard snapshot ratios from reminder-run metrics', () => {
     const snapshot = calculateDashboardSnapshot({
-      totalOutstanding: 300,
-      recoveredThisMonth: 700,
-      activeReminders: 4,
+      remindersSentLast7Days: 10,
+      remindersDeliveredLast7Days: 8,
+      remindersFailedLast7Days: 2,
+      dueReminderRuns: 4,
       totalInvoices: 10,
     });
 
     expect(snapshot).toEqual({
-      recoveredShare: 70,
-      outstandingShare: 30,
-      reminderCoverage: 40,
+      deliveryRate: 80,
+      failureRate: 20,
+      queueCoverage: 40,
     });
   });
 
   it('returns zeroed ratios when totals are empty', () => {
     const snapshot = calculateDashboardSnapshot({
-      totalOutstanding: 0,
-      recoveredThisMonth: 0,
-      activeReminders: 3,
+      remindersSentLast7Days: 0,
+      remindersDeliveredLast7Days: 0,
+      remindersFailedLast7Days: 0,
+      dueReminderRuns: 3,
       totalInvoices: 0,
     });
 
     expect(snapshot).toEqual({
-      recoveredShare: 0,
-      outstandingShare: 0,
-      reminderCoverage: 0,
+      deliveryRate: 0,
+      failureRate: 0,
+      queueCoverage: 0,
     });
   });
 });
