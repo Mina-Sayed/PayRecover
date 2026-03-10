@@ -47,6 +47,7 @@ Scope: Authentication, API validation, user isolation, secrets handling, depende
 - [x] Tenant-owned provider credentials are encrypted at rest and stored through provider onboarding rather than app-wide env vars.
 - [x] Paymob callback verification uses tenant-resolved HMAC secrets before reconciling invoice payment truth.
 - [x] WATI webhook verification uses tenant-resolved webhook secrets before updating delivery state.
+- [x] Supabase public-schema tables have RLS enabled with explicit `service_role`-only policies to avoid anonymous PostgREST exposure.
 - [ ] Real WATI and Paymob sandbox payloads still need contract validation before pilot rollout.
 - [x] Notification preferences are persisted on the tenant profile through the settings API.
 
