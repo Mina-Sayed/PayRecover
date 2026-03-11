@@ -54,7 +54,20 @@ describe('/api/dashboard/stats route handler', () => {
       .mockResolvedValueOnce(2);
     prismaMock.paymentEvent.count.mockResolvedValue(4);
     prismaMock.invoice.count.mockResolvedValue(9);
-    prismaMock.invoice.findMany.mockResolvedValue([]);
+    prismaMock.invoice.findMany.mockResolvedValue([
+      {
+        id: 'inv-1',
+        invoiceNo: 'INV-001',
+        amount: 250.75,
+        dueDate: new Date('2026-03-10T00:00:00.000Z'),
+        status: 'overdue',
+        client: {
+          id: 'client-1',
+          name: 'Acme Corp',
+          phone: '+15551234567',
+        },
+      },
+    ]);
     prismaMock.invoiceEvent.findMany.mockResolvedValue([]);
 
     const response = await route.GET();
@@ -71,6 +84,20 @@ describe('/api/dashboard/stats route handler', () => {
       remindersDeliveredLast7Days: 6,
       remindersFailedLast7Days: 2,
       confirmedPaymentsThisMonth: 4,
+      recentInvoices: [
+        {
+          id: 'inv-1',
+          invoiceNo: 'INV-001',
+          amount: 250.75,
+          dueDate: '2026-03-10T00:00:00.000Z',
+          status: 'overdue',
+          client: {
+            id: 'client-1',
+            name: 'Acme Corp',
+            phone: '+15551234567',
+          },
+        },
+      ],
     });
     expect(typeof body.overdueCount).toBe('number');
     expect(prismaMock.invoice.updateMany).toHaveBeenCalledTimes(2);
@@ -78,6 +105,19 @@ describe('/api/dashboard/stats route handler', () => {
       expect.objectContaining({
         where: { userId: 'user-1', status: { in: ['overdue', 'pending'] } },
         _count: { _all: true },
+      })
+    );
+    expect(prismaMock.invoice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+        },
       })
     );
   });

@@ -4,6 +4,10 @@ import { apiError } from '@/lib/api-response';
 import { isDatabaseConnectivityError } from '@/lib/database-errors';
 import { requireEnv } from '@/lib/env';
 import { syncOpenInvoiceStatuses } from '@/lib/invoice-status';
+import {
+  dashboardRecentInvoiceInclude,
+  serializeDashboardRecentInvoice,
+} from '@/lib/dashboard-serialization';
 import { decimalToNumber } from '@/lib/money';
 import { callSupabaseRpc } from '@/lib/supabase-rpc';
 
@@ -65,7 +69,7 @@ export async function GET() {
           prisma.invoice.count({ where: { userId } }),
           prisma.invoice.findMany({
             where: { userId, status: { in: ['overdue', 'pending'] } },
-            include: { client: true },
+            include: dashboardRecentInvoiceInclude,
             orderBy: { dueDate: 'asc' },
             take: 5,
           }),
@@ -129,10 +133,7 @@ export async function GET() {
         remindersDeliveredLast7Days,
         remindersFailedLast7Days,
         confirmedPaymentsThisMonth,
-        recentInvoices: recentInvoices.map((invoice) => ({
-          ...invoice,
-          amount: decimalToNumber(invoice.amount),
-        })),
+        recentInvoices: recentInvoices.map(serializeDashboardRecentInvoice),
         recentActivity: recentActivity.map((event) => ({
           id: event.id,
           type: event.type,
