@@ -5,7 +5,7 @@ export interface ReminderDraft {
   providerTemplateName: string | null;
   active: boolean;
   order: number;
-  channel: 'whatsapp' | 'sms';
+  channel: 'whatsapp';
 }
 
 export interface InvoiceDraft {

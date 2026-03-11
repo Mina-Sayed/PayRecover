@@ -4,6 +4,8 @@ import {
   encryptProviderConfig,
   mergePaymobConfig,
   mergeWatiConfig,
+  normalizePaymobConnectionConfig,
+  normalizeWatiConnectionConfig,
   validatePaymobConnectionInput,
   validateWatiConnectionInput,
 } from '@/lib/provider-connections';
@@ -57,5 +59,43 @@ describe('provider connection helpers', () => {
     expect(validatePaymobConnectionInput(mergePaymobConfig(null, {}))).toBe(
       'Paymob public key is required'
     );
+  });
+
+  it('rejects unsafe provider base URLs and normalizes safe ones', () => {
+    expect(
+      validateWatiConnectionInput({
+        apiBaseUrl: 'http://169.254.169.254',
+        accessToken: 'token',
+        webhookSecret: 'secret',
+      })
+    ).toBe('Provider base URL must use HTTPS');
+
+    expect(
+      normalizeWatiConnectionConfig({
+        apiBaseUrl: 'https://wati.example.com/path',
+        accessToken: ' token ',
+        webhookSecret: ' secret ',
+      })
+    ).toEqual({
+      apiBaseUrl: 'https://wati.example.com',
+      accessToken: 'token',
+      webhookSecret: 'secret',
+    });
+
+    expect(
+      normalizePaymobConnectionConfig({
+        publicKey: ' pk ',
+        secretKey: ' sk ',
+        integrationId: ' 123 ',
+        hmacSecret: ' hmac ',
+        apiBaseUrl: 'https://accept.paymob.com/tenant',
+      })
+    ).toEqual({
+      publicKey: 'pk',
+      secretKey: 'sk',
+      integrationId: '123',
+      hmacSecret: 'hmac',
+      apiBaseUrl: 'https://accept.paymob.com',
+    });
   });
 });

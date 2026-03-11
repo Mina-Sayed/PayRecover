@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
-import type { PaymobConnectionConfig } from '@/lib/provider-connections';
+import {
+  normalizePaymobConnectionConfig,
+  type PaymobConnectionConfig,
+} from '@/lib/provider-connections';
 
 const PAYMOB_DEFAULT_BASE_URL = 'https://accept.paymob.com';
 
@@ -57,7 +60,8 @@ interface PaymobWebhookCore {
 }
 
 function getPaymobBaseUrl(config: PaymobConnectionConfig): string {
-  return config.apiBaseUrl?.trim() || PAYMOB_DEFAULT_BASE_URL;
+  const normalizedConfig = normalizePaymobConnectionConfig(config);
+  return normalizedConfig.apiBaseUrl?.trim() || PAYMOB_DEFAULT_BASE_URL;
 }
 
 function getNestedValue(payload: Record<string, unknown>, path: string): unknown {
@@ -127,9 +131,10 @@ export async function createPaymobPaymentLink(
   input: CreatePaymobPaymentLinkInput,
   config: PaymobConnectionConfig
 ): Promise<PaymobPaymentLinkResult> {
-  const secretKey = config.secretKey;
-  const integrationId = Number(config.integrationId);
-  const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(config));
+  const normalizedConfig = normalizePaymobConnectionConfig(config);
+  const secretKey = normalizedConfig.secretKey;
+  const integrationId = Number(normalizedConfig.integrationId);
+  const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(normalizedConfig));
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -182,7 +187,7 @@ export async function createPaymobPaymentLink(
 
   return {
     providerRef: readPaymobProviderRef(payload),
-    url: buildPaymobCheckoutUrl(clientSecret, config),
+    url: buildPaymobCheckoutUrl(clientSecret, normalizedConfig),
     expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null,
     rawPayload: payload,
   };
@@ -247,6 +252,10 @@ export function verifyPaymobWebhookSignature(
   ).join('');
 
   const expected = crypto.createHmac('sha512', hmacSecret).update(concatenated).digest('hex');
+  if (expected.length !== core.receivedSignature.length) {
+    return false;
+  }
+
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(core.receivedSignature));
 }
 
@@ -255,11 +264,12 @@ export async function verifyPaymobConnection(config: PaymobConnectionConfig): Pr
   error: string | null;
 }> {
   try {
-    const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(config));
+    const normalizedConfig = normalizePaymobConnectionConfig(config);
+    const endpoint = new URL('/v1/intention/', getPaymobBaseUrl(normalizedConfig));
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Token ${config.secretKey}`,
+        Authorization: `Token ${normalizedConfig.secretKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({}),
@@ -269,7 +279,7 @@ export async function verifyPaymobConnection(config: PaymobConnectionConfig): Pr
       return { ok: false, error: 'Paymob credentials were rejected' };
     }
 
-    if (response.status >= 400 && response.status < 500) {
+    if (response.status === 400) {
       return { ok: true, error: null };
     }
 

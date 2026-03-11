@@ -268,6 +268,14 @@ export async function PATCH(
 
     return Response.json(serializeInvoice(hydratedInvoice ?? invoice));
   } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      (error as { code?: string }).code === 'P2002'
+    ) {
+      return apiError('Client phone already belongs to another client', 409, 'CONFLICT');
+    }
+
     console.error('Update invoice error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');
   }

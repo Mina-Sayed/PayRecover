@@ -39,6 +39,6 @@ export function isInvoiceStatus(value: unknown): value is 'pending' | 'overdue' 
   return value === 'pending' || value === 'overdue' || value === 'paid';
 }
 
-export function isReminderChannel(value: unknown): value is 'whatsapp' | 'sms' {
-  return value === 'whatsapp' || value === 'sms';
+export function isReminderChannel(value: unknown): value is 'whatsapp' {
+  return value === 'whatsapp';
 }

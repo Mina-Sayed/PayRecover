@@ -7,6 +7,7 @@ import {
   decryptProviderConfig,
   encryptProviderConfig,
   mergePaymobConfig,
+  normalizePaymobConnectionConfig,
   toPaymentConnectionSummary,
   validatePaymobConnectionInput,
   type PaymobConnectionConfig,
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
       return apiError(validationError, 400, 'VALIDATION_ERROR');
     }
 
+    const normalizedConfig = normalizePaymobConnectionConfig(mergedConfig);
     const record = existing
       ? await prisma.paymentProviderConnection.update({
           where: { id: existing.id },
@@ -68,7 +70,9 @@ export async function POST(request: Request) {
             accountLabel: asTrimmedString(body.accountLabel),
             mode: normalizeMode(body.mode),
             status: ProviderConnectionStatus.configured,
-            encryptedConfig: encryptProviderConfig(mergedConfig),
+            encryptedConfig: encryptProviderConfig(normalizedConfig),
+            verifiedAt: null,
+            lastHealthcheckAt: null,
             lastError: null,
           },
         })
@@ -79,7 +83,7 @@ export async function POST(request: Request) {
             accountLabel: asTrimmedString(body.accountLabel),
             mode: normalizeMode(body.mode),
             status: ProviderConnectionStatus.configured,
-            encryptedConfig: encryptProviderConfig(mergedConfig),
+            encryptedConfig: encryptProviderConfig(normalizedConfig),
           },
         });
 

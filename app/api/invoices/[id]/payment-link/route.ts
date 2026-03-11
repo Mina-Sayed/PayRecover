@@ -23,11 +23,15 @@ export async function POST(
     const { id } = await params;
     const invoice = await prisma.invoice.findFirst({
       where: { id, userId: session.user.id },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     if (!invoice) {
       return apiError('Invoice not found', 404, 'NOT_FOUND');
+    }
+
+    if (invoice.status === 'paid') {
+      return apiError('Cannot create a payment link for a paid invoice', 409, 'CONFLICT');
     }
 
     await ensureInvoiceOperationalArtifacts(prisma, id);
@@ -43,6 +47,10 @@ export async function POST(
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
       take: 1,
     });
+
+    if (paymentLinks.length === 0) {
+      return apiError('No active payment link is available for this invoice', 502, 'INTERNAL_ERROR');
+    }
 
     return Response.json({
       paymentLink: toPaymentLinkSummary(paymentLinks),

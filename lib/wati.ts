@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
-import type { WatiConnectionConfig } from '@/lib/provider-connections';
+import {
+  normalizeWatiConnectionConfig,
+  type WatiConnectionConfig,
+} from '@/lib/provider-connections';
 
 export interface WatiTemplateSendInput {
   phone: string;
@@ -14,7 +17,7 @@ export interface WatiTemplateSendResult {
 }
 
 function getWatiBaseUrl(config: WatiConnectionConfig): string {
-  const configured = config.apiBaseUrl;
+  const configured = normalizeWatiConnectionConfig(config).apiBaseUrl;
   return configured.endsWith('/') ? configured.slice(0, -1) : configured;
 }
 
@@ -26,11 +29,12 @@ export async function sendWatiTemplateMessage(
   input: WatiTemplateSendInput,
   config: WatiConnectionConfig
 ): Promise<WatiTemplateSendResult> {
-  const endpoint = `${getWatiBaseUrl(config)}/api/v1/sendTemplateMessages`;
+  const normalizedConfig = normalizeWatiConnectionConfig(config);
+  const endpoint = `${getWatiBaseUrl(normalizedConfig)}/api/v1/sendTemplateMessages`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${config.accessToken}`,
+      Authorization: `Bearer ${normalizedConfig.accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -124,11 +128,12 @@ export async function verifyWatiConnection(config: WatiConnectionConfig): Promis
   error: string | null;
 }> {
   try {
-    const endpoint = `${getWatiBaseUrl(config)}/api/v1/sendTemplateMessages`;
+    const normalizedConfig = normalizeWatiConnectionConfig(config);
+    const endpoint = `${getWatiBaseUrl(normalizedConfig)}/api/v1/sendTemplateMessages`;
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.accessToken}`,
+        Authorization: `Bearer ${normalizedConfig.accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({}),
@@ -138,7 +143,7 @@ export async function verifyWatiConnection(config: WatiConnectionConfig): Promis
       return { ok: false, error: 'WATI credentials were rejected' };
     }
 
-    if (response.status >= 400 && response.status < 500) {
+    if (response.status === 400 || response.status === 422) {
       return { ok: true, error: null };
     }
 

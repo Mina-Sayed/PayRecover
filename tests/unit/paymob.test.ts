@@ -115,4 +115,36 @@ describe('paymob helpers', () => {
 
     expect(verifyPaymobWebhookSignature(payload, process.env.PAYMOB_HMAC_SECRET!)).toBe(true);
   });
+
+  it('returns false for malformed signature lengths without throwing', () => {
+    const payload = {
+      obj: {
+        amount_cents: 12000,
+        created_at: '2026-03-08T00:00:00Z',
+        currency: 'EGP',
+        error_occured: false,
+        has_parent_transaction: false,
+        id: 9001,
+        integration_id: 123456,
+        is_3d_secure: false,
+        is_auth: false,
+        is_capture: false,
+        is_refunded: false,
+        is_standalone_payment: true,
+        is_voided: false,
+        order: { id: 77, merchant_order_id: 'inv-1' },
+        owner: 42,
+        pending: false,
+        source_data: {
+          pan: '2345',
+          sub_type: 'MasterCard',
+          type: 'card',
+        },
+        success: true,
+      },
+      hmac: 'short',
+    } as Record<string, unknown>;
+
+    expect(verifyPaymobWebhookSignature(payload, process.env.PAYMOB_HMAC_SECRET!)).toBe(false);
+  });
 });

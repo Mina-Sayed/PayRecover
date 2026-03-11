@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Smartphone, Save, Clock, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { MessageSquare, Save, Clock, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useToast } from '../../components/toast';
 import ConfirmDialog from '../../components/confirm-dialog';
@@ -11,7 +11,7 @@ import { updateReminderDraft, withReminderOrder } from '@/lib/dashboard-state';
 
 interface Reminder {
   id: string;
-  channel: 'whatsapp' | 'sms';
+  channel: 'whatsapp';
   timing: string;
   template: string;
   providerTemplateName: string | null;
@@ -27,13 +27,6 @@ function getReminderExecutionState(reminder: Reminder): {
     return {
       label: 'Paused',
       tone: 'bg-slate-100 text-slate-500',
-    };
-  }
-
-  if (reminder.channel === 'sms') {
-    return {
-      label: 'Template only',
-      tone: 'bg-amber-100 text-amber-700',
     };
   }
 
@@ -69,7 +62,6 @@ function RemindersLoadingState() {
 }
 
 export default function AutomationsPage() {
-  const [activeTab, setActiveTab] = useState<'whatsapp' | 'sms'>('whatsapp');
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Reminder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,9 +89,9 @@ export default function AutomationsPage() {
 
   const visibleReminders = useMemo(() => {
     return reminders
-      .filter((reminder) => reminder.channel === activeTab)
+      .filter((reminder) => reminder.channel === 'whatsapp')
       .sort((a, b) => a.order - b.order);
-  }, [activeTab, reminders]);
+  }, [reminders]);
 
   const handleToggle = (id: string) => {
     setReminders((prev) =>
@@ -122,7 +114,7 @@ export default function AutomationsPage() {
       const reminder = await apiFetch<Reminder>('/api/reminders', {
         method: 'POST',
         body: JSON.stringify({
-          channel: activeTab,
+          channel: 'whatsapp',
           timing: '3 Days Before Due',
           template:
             'Hi {{client_name}}, you have an outstanding invoice of {{amount}}. Pay here: {{payment_link}}',
@@ -188,7 +180,7 @@ export default function AutomationsPage() {
         });
       });
 
-      addToast(`${activeTab === 'whatsapp' ? 'WhatsApp' : 'SMS'} automations saved successfully`);
+      addToast('WhatsApp automations saved successfully');
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to save automations', 'error');
     } finally {
@@ -215,8 +207,8 @@ export default function AutomationsPage() {
       </div>
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-        Live dispatch is currently wired for WhatsApp only. SMS templates remain stored for planning,
-        and WhatsApp reminder steps need a matching WATI template name before the scheduler can send them.
+        Live dispatch is wired for WhatsApp only, and each reminder step needs a matching WATI
+        template name before the scheduler can send it.
       </div>
 
       {error && (
@@ -234,35 +226,15 @@ export default function AutomationsPage() {
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex border-b border-slate-200">
-          <button
-            onClick={() => setActiveTab('whatsapp')}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors ${
-              activeTab === 'whatsapp'
-                ? 'border-b-2 border-emerald-500 text-emerald-600'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
+          <div className="flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 border-emerald-500 text-emerald-600">
             <MessageSquare className="w-4 h-4" />
             WhatsApp Templates
-          </button>
-          <button
-            onClick={() => setActiveTab('sms')}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors ${
-              activeTab === 'sms'
-                ? 'border-b-2 border-emerald-500 text-emerald-600'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <Smartphone className="w-4 h-4" />
-            SMS Templates
-          </button>
+          </div>
         </div>
 
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900">
-              {activeTab === 'whatsapp' ? 'WhatsApp Sequence' : 'SMS Sequence'}
-            </h3>
+            <h3 className="text-lg font-semibold text-slate-900">WhatsApp Sequence</h3>
             <button
               onClick={handleAddReminder}
               className="flex items-center gap-2 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors"
@@ -359,33 +331,31 @@ export default function AutomationsPage() {
                     </div>
                   </div>
 
-                  {activeTab === 'whatsapp' && (
-                    <div className="space-y-2 mt-4">
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        WATI Template Name
-                      </label>
-                      <input
-                        type="text"
-                        value={reminder.providerTemplateName || ''}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setReminders((prev) =>
-                            prev.map((item) =>
-                              item.id === reminder.id
-                                ? { ...item, providerTemplateName: value.trim() || null }
-                                : item
-                            )
-                          );
-                        }}
-                        placeholder="approved_wati_template_name"
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                      <p className="text-xs text-slate-500">
-                        The rendered message above stays your internal template copy. The WATI template
-                        name controls live WhatsApp delivery.
-                      </p>
-                    </div>
-                  )}
+                  <div className="space-y-2 mt-4">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      WATI Template Name
+                    </label>
+                    <input
+                      type="text"
+                      value={reminder.providerTemplateName || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setReminders((prev) =>
+                          prev.map((item) =>
+                            item.id === reminder.id
+                              ? { ...item, providerTemplateName: value.trim() || null }
+                              : item
+                          )
+                        );
+                      }}
+                      placeholder="approved_wati_template_name"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                    <p className="text-xs text-slate-500">
+                      The rendered message above stays your internal template copy. The WATI template
+                      name controls live WhatsApp delivery.
+                    </p>
+                  </div>
                 </div>
                 </motion.div>
               );

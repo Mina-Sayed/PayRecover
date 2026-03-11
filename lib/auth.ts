@@ -3,7 +3,14 @@ import Credentials from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import {
+  clearAuthFailures,
+  getRequestClientIp,
+  isAuthRateLimited,
+  recordAuthFailure,
+} from '@/lib/auth-rate-limit';
 import { requireEnv, validateRequiredEnvVars } from '@/lib/env';
+import { asEmail, asTrimmedString } from '@/lib/validators';
 
 validateRequiredEnvVars(['AUTH_SECRET', 'AUTH_URL']);
 
@@ -22,27 +29,39 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+      async authorize(credentials, request) {
+        const email = asEmail(credentials?.email);
+        const password = asTrimmedString(credentials?.password);
+
+        if (!email || !password) {
+          return null;
+        }
+
+        const ipAddress = getRequestClientIp(request);
+        if (isAuthRateLimited(email, ipAddress)) {
           return null;
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: String(credentials.email).toLowerCase() },
+          where: { email },
         });
 
         if (!user?.hashedPassword) {
+          recordAuthFailure(email, ipAddress);
           return null;
         }
 
         const isPasswordValid = await bcrypt.compare(
-          String(credentials.password),
+          password,
           user.hashedPassword
         );
 
         if (!isPasswordValid) {
+          recordAuthFailure(email, ipAddress);
           return null;
         }
+
+        clearAuthFailures(email, ipAddress);
 
         return {
           id: user.id,

@@ -12,6 +12,9 @@ import {
 
 type PrismaLike = PrismaClient;
 
+const MAX_REMINDER_DELIVERY_ATTEMPTS = 3;
+const REMINDER_RETRY_DELAY_MINUTES = 15;
+
 interface InvoiceCore {
   id: string;
   invoiceNo: string;
@@ -83,19 +86,6 @@ export async function refreshInvoicePaymentLink(
     return null;
   }
 
-  await prisma.paymentLink.updateMany({
-    where: {
-      invoiceId: invoice.id,
-      providerConnectionId: paymentConnection.record.id,
-      status: 'active',
-      isPrimary: true,
-    },
-    data: {
-      status: 'expired',
-      isPrimary: false,
-    },
-  });
-
   const created = await createPaymobPaymentLink({
     invoiceId: invoice.id,
     invoiceNo: invoice.invoiceNo,
@@ -109,31 +99,70 @@ export async function refreshInvoicePaymentLink(
     redirectUrl: redirectPathForInvoice(invoice.id),
   }, paymentConnection.config);
 
-  const paymentLink = await prisma.paymentLink.create({
-    data: {
-      invoiceId: invoice.id,
-      userId: invoice.userId,
-      provider: 'paymob',
-      providerRef: created.providerRef,
-      providerConnectionId: paymentConnection.record.id,
-      url: created.url,
-      status: 'active',
-      isPrimary: true,
-      expiresAt: created.expiresAt,
-      rawPayload: created.rawPayload as Prisma.InputJsonValue,
-    },
-  });
+  const paymentLink = await prisma.$transaction(async (tx) => {
+    await tx.paymentLink.updateMany({
+      where: {
+        invoiceId: invoice.id,
+        providerConnectionId: paymentConnection.record.id,
+        status: 'active',
+        isPrimary: true,
+      },
+      data: {
+        status: 'expired',
+        isPrimary: false,
+      },
+    });
 
-  await prisma.invoiceEvent.create({
-    data: {
-      invoiceId: invoice.id,
-      userId: invoice.userId,
-      type: 'payment_link_created',
-      message: `Payment link created for invoice ${invoice.invoiceNo}`,
-    },
+    const createdPaymentLink = await tx.paymentLink.create({
+      data: {
+        invoiceId: invoice.id,
+        userId: invoice.userId,
+        provider: 'paymob',
+        providerRef: created.providerRef,
+        providerConnectionId: paymentConnection.record.id,
+        url: created.url,
+        status: 'active',
+        isPrimary: true,
+        expiresAt: created.expiresAt,
+        rawPayload: created.rawPayload as Prisma.InputJsonValue,
+      },
+    });
+
+    await tx.invoiceEvent.create({
+      data: {
+        invoiceId: invoice.id,
+        userId: invoice.userId,
+        type: 'payment_link_created',
+        message: `Payment link created for invoice ${invoice.invoiceNo}`,
+      },
+    });
+
+    return createdPaymentLink;
   });
 
   return paymentLink;
+}
+
+function isReminderRunConflict(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as { code?: string; meta?: { target?: unknown } };
+  if (candidate.code !== 'P2002') {
+    return false;
+  }
+
+  const target = candidate.meta?.target;
+  if (!target) {
+    return false;
+  }
+
+  if (Array.isArray(target)) {
+    return target.includes('scheduledFor') && target.includes('timingLabel');
+  }
+
+  return typeof target === 'string' && target.includes('ReminderRun');
 }
 
 export async function syncReminderRunsForInvoice(prisma: PrismaLike, invoiceId: string) {
@@ -179,35 +208,27 @@ export async function syncReminderRunsForInvoice(prisma: PrismaLike, invoiceId: 
       continue;
     }
 
-    const existing = await prisma.reminderRun.findFirst({
-      where: {
-        invoiceId: invoice.id,
-        timingLabel: template.timing,
-        scheduledFor,
-        channel: 'whatsapp',
-      },
-      select: { id: true },
-    });
+    try {
+      const run = await prisma.reminderRun.create({
+        data: {
+          invoiceId: invoice.id,
+          templateId: template.id,
+          userId: invoice.userId,
+          channel: 'whatsapp',
+          messagingConnectionId: messagingConnection.record.id,
+          timingLabel: template.timing,
+          templateSnapshot: template.template,
+          scheduledFor,
+        },
+        select: { id: true },
+      });
 
-    if (existing) {
-      continue;
+      createdRuns.push(run.id);
+    } catch (error) {
+      if (!isReminderRunConflict(error)) {
+        throw error;
+      }
     }
-
-    const run = await prisma.reminderRun.create({
-      data: {
-        invoiceId: invoice.id,
-        templateId: template.id,
-        userId: invoice.userId,
-        channel: 'whatsapp',
-        messagingConnectionId: messagingConnection.record.id,
-        timingLabel: template.timing,
-        templateSnapshot: template.template,
-        scheduledFor,
-      },
-      select: { id: true },
-    });
-
-    createdRuns.push(run.id);
   }
 
   return createdRuns;
@@ -225,6 +246,10 @@ export async function ensureInvoiceOperationalArtifacts(
   });
 
   if (!invoice) {
+    return null;
+  }
+
+  if (invoice.status === 'paid') {
     return null;
   }
 
@@ -420,6 +445,30 @@ function buildReminderMessage(selection: ReminderDispatchSelection): string {
   });
 }
 
+function getNextReminderRetryDate(now: Date): Date {
+  return new Date(now.getTime() + REMINDER_RETRY_DELAY_MINUTES * 60 * 1000);
+}
+
+async function failReminderRunAttempt(
+  prisma: PrismaLike,
+  runId: string,
+  attemptNo: number,
+  errorMessage: string
+) {
+  await prisma.deliveryAttempt.update({
+    where: {
+      reminderRunId_attemptNo: {
+        reminderRunId: runId,
+        attemptNo,
+      },
+    },
+    data: {
+      status: 'failed',
+      errorMessage,
+    },
+  });
+}
+
 export async function dispatchDueReminderRuns(
   prisma: PrismaLike,
   now = new Date(),
@@ -430,7 +479,15 @@ export async function dispatchDueReminderRuns(
       status: 'scheduled',
       channel: 'whatsapp',
       scheduledFor: { lte: now },
-      invoice: { status: { not: 'paid' } },
+      invoice: {
+        status: { not: 'paid' },
+        paymentLinks: {
+          some: {
+            isPrimary: true,
+            status: 'active',
+          },
+        },
+      },
     },
     include: {
       invoice: {
@@ -479,6 +536,7 @@ export async function dispatchDueReminderRuns(
     });
 
     if (!run.messagingConnection?.encryptedConfig) {
+      await failReminderRunAttempt(prisma, run.id, attemptNo, 'No verified WATI connection');
       await prisma.reminderRun.update({
         where: { id: run.id },
         data: {
@@ -490,24 +548,26 @@ export async function dispatchDueReminderRuns(
       continue;
     }
 
+    if (run.invoice.paymentLinks.length === 0) {
+      await failReminderRunAttempt(prisma, run.id, attemptNo, 'No active payment link');
+      await prisma.reminderRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'failed',
+          lastError: 'No active payment link',
+        },
+      });
+      processed.push({ id: run.id, status: 'failed' });
+      continue;
+    }
+
     if (!run.template?.providerTemplateName) {
+      await failReminderRunAttempt(prisma, run.id, attemptNo, 'Missing WATI template name');
       await prisma.reminderRun.update({
         where: { id: run.id },
         data: {
           status: 'failed',
           lastError: 'Missing WATI template name',
-        },
-      });
-      await prisma.deliveryAttempt.update({
-        where: {
-          reminderRunId_attemptNo: {
-            reminderRunId: run.id,
-            attemptNo,
-          },
-        },
-        data: {
-          status: 'failed',
-          errorMessage: 'Missing WATI template name',
         },
       });
       processed.push({ id: run.id, status: 'failed' });
@@ -524,6 +584,10 @@ export async function dispatchDueReminderRuns(
         broadcastName: `payrecover-${run.invoice.invoiceNo}-${run.id}`,
         parameters: buildReminderTemplateParameters(run as ReminderDispatchSelection),
       }, connection);
+
+      if (!response.providerMessageId) {
+        throw new Error('WATI response did not include a message ID');
+      }
 
       await prisma.deliveryAttempt.update({
         where: {
@@ -562,25 +626,21 @@ export async function dispatchDueReminderRuns(
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown WATI delivery error';
 
-      await prisma.deliveryAttempt.update({
-        where: {
-          reminderRunId_attemptNo: {
-            reminderRunId: run.id,
-            attemptNo,
-          },
-        },
-        data: {
-          status: 'failed',
-          errorMessage,
-        },
-      });
+      await failReminderRunAttempt(prisma, run.id, attemptNo, errorMessage);
 
+      const willRetry = attemptNo < MAX_REMINDER_DELIVERY_ATTEMPTS;
       await prisma.reminderRun.update({
         where: { id: run.id },
-        data: {
-          status: 'failed',
-          lastError: errorMessage,
-        },
+        data: willRetry
+          ? {
+              status: 'scheduled',
+              scheduledFor: getNextReminderRetryDate(now),
+              lastError: errorMessage,
+            }
+          : {
+              status: 'failed',
+              lastError: errorMessage,
+            },
       });
 
       await prisma.invoiceEvent.create({
@@ -588,11 +648,13 @@ export async function dispatchDueReminderRuns(
           invoiceId: run.invoiceId,
           userId: run.userId,
           type: 'reminder_failed',
-          message: `WhatsApp reminder failed: ${errorMessage}`,
+          message: willRetry
+            ? `WhatsApp reminder send failed and was rescheduled: ${errorMessage}`
+            : `WhatsApp reminder failed: ${errorMessage}`,
         },
       });
 
-      processed.push({ id: run.id, status: 'failed' });
+      processed.push({ id: run.id, status: willRetry ? 'retry_scheduled' : 'failed' });
     }
   }
 

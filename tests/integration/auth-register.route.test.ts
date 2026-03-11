@@ -36,17 +36,17 @@ describe('POST /api/auth/register', () => {
     const { route, hashMock, prismaMock, transactionClient } = await loadRegisterRoute();
     hashMock.mockResolvedValue('hashed-password');
     transactionClient.user.create.mockResolvedValue({ id: 'user-1' });
-    transactionClient.reminderTemplate.createMany.mockResolvedValue({ count: 4 });
+    transactionClient.reminderTemplate.createMany.mockResolvedValue({ count: 2 });
 
     const request = new Request('http://localhost/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Mina',
-        email: 'MINA@example.com',
-        password: 'secret123',
-      }),
-    });
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Mina',
+          email: 'MINA@example.com',
+          password: 'Strongpass123',
+        }),
+      });
 
     const response = await route.POST(request);
     const body = await response.json();
@@ -57,7 +57,7 @@ describe('POST /api/auth/register', () => {
       userId: 'user-1',
     });
 
-    expect(hashMock).toHaveBeenCalledWith('secret123', 12);
+    expect(hashMock).toHaveBeenCalledWith('Strongpass123', 12);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(transactionClient.user.create).toHaveBeenCalledTimes(1);
     expect(transactionClient.reminderTemplate.createMany).toHaveBeenCalledTimes(1);
@@ -68,14 +68,14 @@ describe('POST /api/auth/register', () => {
     prismaMock.$transaction.mockRejectedValue({ code: 'P2002' });
 
     const request = new Request('http://localhost/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Mina',
-        email: 'mina@example.com',
-        password: 'secret123',
-      }),
-    });
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Mina',
+          email: 'mina@example.com',
+          password: 'Strongpass123',
+        }),
+      });
 
     const response = await route.POST(request);
     const body = await response.json();
@@ -96,14 +96,14 @@ describe('POST /api/auth/register', () => {
     transactionClient.reminderTemplate.createMany.mockRejectedValue(new Error('transient db failure'));
 
     const request = new Request('http://localhost/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Mina',
-        email: 'mina@example.com',
-        password: 'secret123',
-      }),
-    });
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Mina',
+          email: 'mina@example.com',
+          password: 'Strongpass123',
+        }),
+      });
 
     const response = await route.POST(request);
     const body = await response.json();
@@ -117,5 +117,29 @@ describe('POST /api/auth/register', () => {
     expect(transactionClient.user.create).toHaveBeenCalledTimes(1);
     expect(transactionClient.reminderTemplate.createMany).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects weak passwords before touching the database', async () => {
+    const { route, prismaMock } = await loadRegisterRoute();
+
+    const request = new Request('http://localhost/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Mina',
+        email: 'mina@example.com',
+        password: 'short',
+      }),
+    });
+
+    const response = await route.POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      error: 'Password must be at least 12 characters',
+      code: 'VALIDATION_ERROR',
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -126,6 +126,35 @@ describe('provider connection routes', () => {
     expect(prismaMock.messagingProviderConnection.create).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects unsafe provider hosts before saving a WATI connection', async () => {
+    const { route, authMock, prismaMock } = await loadMessagingRoute();
+    authMock.mockResolvedValue({ user: { id: 'user-1' } });
+    prismaMock.messagingProviderConnection.findFirst.mockResolvedValue(null);
+
+    const response = await route.POST(
+      new Request('http://localhost/api/provider-connections/messaging', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountLabel: 'Clinic WATI',
+          senderIdentifier: '971500000000',
+          mode: 'sandbox',
+          apiBaseUrl: 'https://malicious.internal',
+          accessToken: 'token',
+          webhookSecret: 'secret',
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      error: 'WATI base URL host is not allowlisted',
+      code: 'VALIDATION_ERROR',
+    });
+    expect(prismaMock.messagingProviderConnection.create).not.toHaveBeenCalled();
+  });
+
   it('verifies a tenant WATI connection and backfills eligible invoices', async () => {
     const { route, authMock, prismaMock, syncOperationalArtifactsForUserMock } =
       await loadMessagingVerifyRoute();

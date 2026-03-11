@@ -279,7 +279,7 @@ model PaymentEvent {
   user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerConnection PaymentProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
 
-  @@unique([provider, providerEventId])
+  @@unique([provider, providerConnectionId, providerEventId])
   @@index([invoiceId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
 }
@@ -294,14 +294,14 @@ model ReminderRun {
   templateSnapshot     String            @db.Text
   scheduledFor         DateTime
   status               ReminderRunStatus @default(scheduled)
-  providerMessageId     String?
+  providerMessageId    String?           @unique
   messagingConnectionId String?
-  deliveryConfirmedAt   DateTime?
-  sentAt                DateTime?
-  lastError             String?
-  suppressionReason     String?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  deliveryConfirmedAt  DateTime?
+  sentAt               DateTime?
+  lastError            String?
+  suppressionReason    String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   invoice             Invoice                     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   template            ReminderTemplate?           @relation(fields: [templateId], references: [id], onDelete: SetNull)
@@ -311,6 +311,8 @@ model ReminderRun {
 
   @@index([invoiceId, scheduledFor])
   @@index([userId, status, scheduledFor])
+  @@index([status, channel, scheduledFor])
+  @@unique([invoiceId, channel, timingLabel, scheduledFor])
 }
 
 model DeliveryAttempt {

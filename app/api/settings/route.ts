@@ -1,6 +1,9 @@
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
+import { isDatabaseConnectivityError } from '@/lib/database-errors';
+import { requireEnv } from '@/lib/env';
+import { callSupabaseRpc, ensureFallbackUserProfile } from '@/lib/supabase-rpc';
 import { isRecord } from '@/lib/validators';
 import {
   toMessagingConnectionSummary,
@@ -60,12 +63,71 @@ export async function GET() {
       return apiError('Unauthorized', 401, 'UNAUTHORIZED');
     }
 
-    const payload = await loadSettingsPayload(session.user.id);
-    if (!payload) {
-      return apiError('User not found', 404, 'NOT_FOUND');
-    }
+    try {
+      const payload = await loadSettingsPayload(session.user.id);
+      if (!payload) {
+        return apiError('User not found', 404, 'NOT_FOUND');
+      }
 
-    return Response.json(payload);
+      return Response.json(payload);
+    } catch (error) {
+      if (isDatabaseConnectivityError(error)) {
+        const secret = requireEnv('PROVIDER_CONFIG_SECRET');
+        const payload = await callSupabaseRpc<{
+          user: {
+            id: string;
+            name: string | null;
+            email: string;
+            businessName: string | null;
+            whatsappNumber: string | null;
+            plan: string;
+            notifyPaymentReceived: boolean;
+            notifyDailySummary: boolean;
+            notifyOverdueAlerts: boolean;
+          } | null;
+          messagingConnectionRecord: Parameters<typeof toMessagingConnectionSummary>[0];
+          paymentConnectionRecord: Parameters<typeof toPaymentConnectionSummary>[0];
+        }>('app_get_settings', {
+          p_user_id: session.user.id,
+          p_secret: secret,
+        });
+
+        if (!payload?.user) {
+          const user = await ensureFallbackUserProfile(
+            {
+              id: session.user.id,
+              email: session.user.email,
+              name: session.user.name,
+            },
+            secret
+          );
+
+          return Response.json({
+            ...user,
+            notificationPrefs: {
+              paymentReceived: user.notifyPaymentReceived,
+              dailySummary: user.notifyDailySummary,
+              overdueAlerts: user.notifyOverdueAlerts,
+            },
+            messagingConnection: toMessagingConnectionSummary(null),
+            paymentConnection: toPaymentConnectionSummary(null),
+          });
+        }
+
+        return Response.json({
+          ...payload.user,
+          notificationPrefs: {
+            paymentReceived: payload.user.notifyPaymentReceived,
+            dailySummary: payload.user.notifyDailySummary,
+            overdueAlerts: payload.user.notifyOverdueAlerts,
+          },
+          messagingConnection: toMessagingConnectionSummary(payload.messagingConnectionRecord),
+          paymentConnection: toPaymentConnectionSummary(payload.paymentConnectionRecord),
+        });
+      }
+
+      throw error;
+    }
   } catch (error) {
     console.error('Settings read error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

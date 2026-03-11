@@ -12,7 +12,12 @@ async function loadRemindersRoute() {
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
+    $transaction: vi.fn(),
   };
+
+  prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) =>
+    callback(prismaMock)
+  );
 
   vi.doMock('@/lib/auth', () => ({ auth: authMock }));
   vi.doMock('@/lib/prisma', () => ({ prisma: prismaMock }));
@@ -72,6 +77,37 @@ describe('/api/reminders route handlers', () => {
         active: true,
         order: 0,
       },
+    });
+  });
+
+  it('fails the batch when one reminder is missing or not owned by the user', async () => {
+    const { route, authMock, prismaMock } = await loadRemindersRoute();
+    authMock.mockResolvedValue({ user: { id: 'user-1' } });
+    prismaMock.reminderTemplate.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await route.PUT(
+      new Request('http://localhost/api/reminders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reminders: [
+            {
+              id: 'rem-404',
+              timing: '1 Day Overdue',
+              template: 'Pay now',
+              active: true,
+              order: 0,
+            },
+          ],
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body).toMatchObject({
+      error: 'Reminder not found or not owned by user: rem-404',
+      code: 'NOT_FOUND',
     });
   });
 

@@ -7,6 +7,7 @@ import {
   decryptProviderConfig,
   encryptProviderConfig,
   mergeWatiConfig,
+  normalizeWatiConnectionConfig,
   toMessagingConnectionSummary,
   validateWatiConnectionInput,
   type WatiConnectionConfig,
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
       return apiError(validationError, 400, 'VALIDATION_ERROR');
     }
 
+    const normalizedConfig = normalizeWatiConnectionConfig(mergedConfig);
     const record = existing
       ? await prisma.messagingProviderConnection.update({
           where: { id: existing.id },
@@ -66,7 +68,9 @@ export async function POST(request: Request) {
             senderIdentifier: asTrimmedString(body.senderIdentifier),
             mode: normalizeMode(body.mode),
             status: ProviderConnectionStatus.configured,
-            encryptedConfig: encryptProviderConfig(mergedConfig),
+            encryptedConfig: encryptProviderConfig(normalizedConfig),
+            verifiedAt: null,
+            lastHealthcheckAt: null,
             lastError: null,
           },
         })
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
             senderIdentifier: asTrimmedString(body.senderIdentifier),
             mode: normalizeMode(body.mode),
             status: ProviderConnectionStatus.configured,
-            encryptedConfig: encryptProviderConfig(mergedConfig),
+            encryptedConfig: encryptProviderConfig(normalizedConfig),
           },
         });
 

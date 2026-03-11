@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
 import {
   MessagingProviderKind,
   PaymentProviderKind,
@@ -6,7 +7,7 @@ import {
   ProviderConnectionStatus,
   type PrismaClient,
 } from '@prisma/client';
-import { requireEnv } from '@/lib/env';
+import { getEnv, requireEnv } from '@/lib/env';
 
 export interface WatiConnectionConfig {
   apiBaseUrl: string;
@@ -57,6 +58,13 @@ export interface PaymentConnectionSummary {
 
 type PrismaLike = PrismaClient;
 
+type ProviderBaseUrlKind = 'wati' | 'paymob';
+
+const DEFAULT_ALLOWED_PROVIDER_HOSTS: Record<ProviderBaseUrlKind, string[]> = {
+  wati: ['wati.example.com', 'wati.io', 'wati.chat'],
+  paymob: ['accept.paymob.com'],
+};
+
 interface MessagingConnectionRecord {
   id: string;
   provider: MessagingProviderKind;
@@ -87,6 +95,92 @@ function deriveKey(): Buffer {
     .createHash('sha256')
     .update(requireEnv('PROVIDER_CONFIG_SECRET'))
     .digest();
+}
+
+function getAllowedProviderHosts(kind: ProviderBaseUrlKind): string[] {
+  const envName = kind === 'wati' ? 'WATI_ALLOWED_HOSTS' : 'PAYMOB_ALLOWED_HOSTS';
+  const configured = getEnv(envName);
+
+  if (!configured) {
+    return DEFAULT_ALLOWED_PROVIDER_HOSTS[kind];
+  }
+
+  const hosts = configured
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return hosts.length > 0 ? hosts : DEFAULT_ALLOWED_PROVIDER_HOSTS[kind];
+}
+
+function isAllowedProviderHostname(hostname: string, kind: ProviderBaseUrlKind): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return getAllowedProviderHosts(kind).some(
+    (candidate) => normalized === candidate || normalized.endsWith(`.${candidate}`)
+  );
+}
+
+function normalizeProviderBaseUrl(
+  rawValue: string,
+  kind: ProviderBaseUrlKind
+): { value: string | null; error: string | null } {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return { value: null, error: `${kind === 'wati' ? 'WATI' : 'Paymob'} base URL is required` };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { value: null, error: 'Provider base URL must be a valid absolute URL' };
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return { value: null, error: 'Provider base URL must use HTTPS' };
+  }
+
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    return {
+      value: null,
+      error: 'Provider base URL must not include credentials, query parameters, or fragments',
+    };
+  }
+
+  if (net.isIP(parsed.hostname) !== 0) {
+    return { value: null, error: 'Provider base URL must use an allowlisted hostname' };
+  }
+
+  if (!isAllowedProviderHostname(parsed.hostname, kind)) {
+    return {
+      value: null,
+      error: `${kind === 'wati' ? 'WATI' : 'Paymob'} base URL host is not allowlisted`,
+    };
+  }
+
+  return { value: parsed.origin, error: null };
+}
+
+export function normalizeWatiBaseUrl(rawValue: string): string {
+  const normalized = normalizeProviderBaseUrl(rawValue, 'wati');
+  if (normalized.error || !normalized.value) {
+    throw new Error(normalized.error || 'Invalid WATI base URL');
+  }
+
+  return normalized.value;
+}
+
+export function normalizePaymobBaseUrl(rawValue: string): string {
+  const normalized = normalizeProviderBaseUrl(rawValue, 'paymob');
+  if (normalized.error || !normalized.value) {
+    throw new Error(normalized.error || 'Invalid Paymob base URL');
+  }
+
+  return normalized.value;
 }
 
 export function encryptProviderConfig(config: unknown): string {
@@ -135,6 +229,11 @@ export function validateWatiConnectionInput(config: Partial<WatiConnectionConfig
     return 'WATI base URL is required';
   }
 
+  const normalizedBaseUrl = normalizeProviderBaseUrl(config.apiBaseUrl, 'wati');
+  if (normalizedBaseUrl.error) {
+    return normalizedBaseUrl.error;
+  }
+
   if (!config.accessToken || !config.accessToken.trim()) {
     return 'WATI access token is required';
   }
@@ -163,7 +262,34 @@ export function validatePaymobConnectionInput(config: Partial<PaymobConnectionCo
     return 'Paymob HMAC secret is required';
   }
 
+  if (config.apiBaseUrl) {
+    const normalizedBaseUrl = normalizeProviderBaseUrl(config.apiBaseUrl, 'paymob');
+    if (normalizedBaseUrl.error) {
+      return normalizedBaseUrl.error;
+    }
+  }
+
   return null;
+}
+
+export function normalizeWatiConnectionConfig(config: WatiConnectionConfig): WatiConnectionConfig {
+  return {
+    apiBaseUrl: normalizeWatiBaseUrl(config.apiBaseUrl),
+    accessToken: config.accessToken.trim(),
+    webhookSecret: config.webhookSecret.trim(),
+  };
+}
+
+export function normalizePaymobConnectionConfig(
+  config: PaymobConnectionConfig
+): PaymobConnectionConfig {
+  return {
+    publicKey: config.publicKey.trim(),
+    secretKey: config.secretKey.trim(),
+    integrationId: config.integrationId.trim(),
+    hmacSecret: config.hmacSecret.trim(),
+    apiBaseUrl: config.apiBaseUrl?.trim() ? normalizePaymobBaseUrl(config.apiBaseUrl) : null,
+  };
 }
 
 export function mergeWatiConfig(
@@ -209,7 +335,18 @@ export function toMessagingConnectionSummary(
     };
   }
 
-  const config = decryptProviderConfig<WatiConnectionConfig>(record.encryptedConfig);
+  let configPreview: MessagingConnectionSummary['configPreview'] = null;
+
+  try {
+    const config = normalizeWatiConnectionConfig(
+      decryptProviderConfig<WatiConnectionConfig>(record.encryptedConfig)
+    );
+    configPreview = {
+      apiBaseUrl: config.apiBaseUrl,
+    };
+  } catch {
+    configPreview = null;
+  }
 
   return {
     id: record.id,
@@ -222,9 +359,7 @@ export function toMessagingConnectionSummary(
     lastHealthcheckAt: isoOrNull(record.lastHealthcheckAt),
     lastError: record.lastError,
     hasConfig: true,
-    configPreview: {
-      apiBaseUrl: config.apiBaseUrl,
-    },
+    configPreview,
   };
 }
 
@@ -246,7 +381,20 @@ export function toPaymentConnectionSummary(
     };
   }
 
-  const config = decryptProviderConfig<PaymobConnectionConfig>(record.encryptedConfig);
+  let configPreview: PaymentConnectionSummary['configPreview'] = null;
+
+  try {
+    const config = normalizePaymobConnectionConfig(
+      decryptProviderConfig<PaymobConnectionConfig>(record.encryptedConfig)
+    );
+    configPreview = {
+      publicKeyMasked: maskValue(config.publicKey),
+      integrationId: config.integrationId,
+      apiBaseUrl: config.apiBaseUrl ?? null,
+    };
+  } catch {
+    configPreview = null;
+  }
 
   return {
     id: record.id,
@@ -258,11 +406,7 @@ export function toPaymentConnectionSummary(
     lastHealthcheckAt: isoOrNull(record.lastHealthcheckAt),
     lastError: record.lastError,
     hasConfig: true,
-    configPreview: {
-      publicKeyMasked: maskValue(config.publicKey),
-      integrationId: config.integrationId,
-      apiBaseUrl: config.apiBaseUrl ?? null,
-    },
+    configPreview,
   };
 }
 
@@ -281,7 +425,9 @@ export async function getVerifiedMessagingConnection(prisma: PrismaLike, userId:
 
   return {
     record,
-    config: decryptProviderConfig<WatiConnectionConfig>(record.encryptedConfig),
+    config: normalizeWatiConnectionConfig(
+      decryptProviderConfig<WatiConnectionConfig>(record.encryptedConfig)
+    ),
   };
 }
 
@@ -300,6 +446,8 @@ export async function getVerifiedPaymentConnection(prisma: PrismaLike, userId: s
 
   return {
     record,
-    config: decryptProviderConfig<PaymobConnectionConfig>(record.encryptedConfig),
+    config: normalizePaymobConnectionConfig(
+      decryptProviderConfig<PaymobConnectionConfig>(record.encryptedConfig)
+    ),
   };
 }

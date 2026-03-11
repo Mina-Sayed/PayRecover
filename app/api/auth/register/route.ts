@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
+import { validatePasswordStrength } from '@/lib/password-policy';
 import { asEmail, asTrimmedString, isRecord } from '@/lib/validators';
 
 interface RegisterBody {
@@ -29,8 +30,9 @@ export async function POST(request: Request) {
       return apiError('Missing required fields', 400, 'VALIDATION_ERROR');
     }
 
-    if (password.length < 6) {
-      return apiError('Password must be at least 6 characters', 400, 'VALIDATION_ERROR');
+    const passwordValidationError = validatePasswordStrength(password);
+    if (passwordValidationError) {
+      return apiError(passwordValidationError, 400, 'VALIDATION_ERROR');
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -63,24 +65,6 @@ export async function POST(request: Request) {
             providerTemplateName: null,
             template:
               'Hi {{client_name}}, your invoice for {{amount}} is due today. Please complete your payment here: {{payment_link}}',
-            order: 1,
-          },
-          {
-            userId: createdUser.id,
-            channel: 'sms',
-            timing: '1 Day Overdue',
-            providerTemplateName: null,
-            template:
-              'Reminder: Your payment of {{amount}} is overdue. Pay now: {{payment_link}}',
-            order: 0,
-          },
-          {
-            userId: createdUser.id,
-            channel: 'sms',
-            timing: '7 Days Overdue',
-            providerTemplateName: null,
-            template:
-              'URGENT: Your invoice of {{amount}} is 7 days overdue. Please pay immediately to avoid service interruption: {{payment_link}}',
             order: 1,
           },
         ],

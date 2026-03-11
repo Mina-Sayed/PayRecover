@@ -1,7 +1,8 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
 import { extractPaymobWebhookCore, verifyPaymobWebhookSignature } from '@/lib/paymob';
-import { toDecimal } from '@/lib/money';
+import { amountToMinorUnits, toDecimal } from '@/lib/money';
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
 import { decryptProviderConfig, type PaymobConnectionConfig } from '@/lib/provider-connections';
 
@@ -9,13 +10,23 @@ interface PaymobCallbackInvoiceTarget {
   id: string;
   userId: string;
   invoiceNo: string;
+  amount: Prisma.Decimal | number | string;
+  currency: string;
   providerConnection: {
     id: string;
     encryptedConfig: string;
   } | null;
 }
 
-async function findInvoiceFromWebhookReference(
+function isPaymobEventConflict(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  return (error as { code?: string }).code === 'P2002';
+}
+
+async function findInvoiceByDirectReference(
   reference: string | null
 ): Promise<PaymobCallbackInvoiceTarget | null> {
   if (!reference) {
@@ -24,20 +35,40 @@ async function findInvoiceFromWebhookReference(
 
   const directInvoice = await prisma.invoice.findFirst({
     where: { id: reference },
-    select: { id: true, userId: true, invoiceNo: true },
+    select: { id: true, userId: true, invoiceNo: true, amount: true, currency: true },
   });
 
-  if (directInvoice) {
-    return {
-      ...directInvoice,
-      providerConnection: null,
-    };
+  if (!directInvoice) {
+    return null;
   }
 
-  const paymentLink = await prisma.paymentLink.findFirst({
+  const paymentConnection = await prisma.paymentProviderConnection.findFirst({
     where: {
-      providerRef: reference,
+      userId: directInvoice.userId,
+      provider: 'paymob',
     },
+    select: {
+      id: true,
+      encryptedConfig: true,
+    },
+  });
+
+  return {
+    ...directInvoice,
+    providerConnection: paymentConnection,
+  };
+}
+
+async function findInvoiceFromProviderReference(
+  reference: string | null,
+  payload: unknown
+): Promise<PaymobCallbackInvoiceTarget | null> {
+  if (!reference) {
+    return null;
+  }
+
+  const paymentLinks = await prisma.paymentLink.findMany({
+    where: { providerRef: reference },
     select: {
       providerConnection: {
         select: {
@@ -50,65 +81,84 @@ async function findInvoiceFromWebhookReference(
           id: true,
           userId: true,
           invoiceNo: true,
+          amount: true,
+          currency: true,
         },
       },
     },
   });
 
-  if (!paymentLink?.invoice) {
-    return null;
+  const verifiedMatches = paymentLinks
+    .filter((paymentLink) => paymentLink.invoice && paymentLink.providerConnection)
+    .filter((paymentLink) => {
+      try {
+        return verifyPaymobWebhookSignature(
+          payload,
+          decryptProviderConfig<PaymobConnectionConfig>(
+            paymentLink.providerConnection!.encryptedConfig
+          ).hmacSecret
+        );
+      } catch {
+        return false;
+      }
+    });
+
+  if (verifiedMatches.length > 1) {
+    throw new Error('Ambiguous Paymob callback reference');
   }
 
-  return {
-    ...paymentLink.invoice,
-    providerConnection: paymentLink.providerConnection,
-  };
+  const match = verifiedMatches[0];
+  return match?.invoice && match.providerConnection
+    ? {
+        ...match.invoice,
+        providerConnection: match.providerConnection,
+      }
+    : null;
+}
+
+function hasMatchingSettlement(invoice: PaymobCallbackInvoiceTarget, amountCents: number, currency: string) {
+  return (
+    amountToMinorUnits(invoice.amount) === amountCents &&
+    invoice.currency.trim().toUpperCase() === currency.trim().toUpperCase()
+  );
 }
 
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
-    const payload = JSON.parse(rawBody);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return apiError('Invalid Paymob payload', 400, 'VALIDATION_ERROR');
+    }
+
     const core = extractPaymobWebhookCore(payload);
 
     if (!core) {
       return apiError('Invalid Paymob payload', 400, 'VALIDATION_ERROR');
     }
 
-    let invoice: PaymobCallbackInvoiceTarget | null = await findInvoiceFromWebhookReference(
-      core.invoiceReference
-    );
-    if (!invoice) {
-      const directInvoice = core.invoiceReference
-        ? await prisma.invoice.findFirst({
-            where: { id: core.invoiceReference },
-            select: {
-              id: true,
-              userId: true,
-              invoiceNo: true,
-            },
-          })
-        : null;
+    const directInvoice = await findInvoiceByDirectReference(core.invoiceReference);
+    let invoice: PaymobCallbackInvoiceTarget | null = null;
 
-      if (!directInvoice) {
-        return apiError('Invoice not found for callback', 404, 'NOT_FOUND');
+    if (directInvoice?.providerConnection?.encryptedConfig) {
+      const directConnection = decryptProviderConfig<PaymobConnectionConfig>(
+        directInvoice.providerConnection.encryptedConfig
+      );
+      if (verifyPaymobWebhookSignature(payload, directConnection.hmacSecret)) {
+        invoice = directInvoice;
+      } else {
+        return apiError('Invalid Paymob signature', 401, 'UNAUTHORIZED');
       }
+    }
 
-      const paymentConnection = await prisma.paymentProviderConnection.findFirst({
-        where: {
-          userId: directInvoice.userId,
-          provider: 'paymob',
-        },
-        select: {
-          id: true,
-          encryptedConfig: true,
-        },
-      });
+    if (!invoice) {
+      invoice = await findInvoiceFromProviderReference(core.invoiceReference, payload);
+    }
 
-      invoice = {
-        ...directInvoice,
-        providerConnection: paymentConnection,
-      } satisfies PaymobCallbackInvoiceTarget;
+    if (!invoice) {
+      return apiError('Invoice not found for callback', 404, 'NOT_FOUND');
     }
 
     if (!invoice.providerConnection?.encryptedConfig) {
@@ -124,36 +174,51 @@ export async function POST(request: Request) {
       return apiError('Invalid Paymob signature', 401, 'UNAUTHORIZED');
     }
 
-    const existing = await prisma.paymentEvent.findUnique({
-      where: {
-        provider_providerEventId: {
-          provider: 'paymob',
-          providerEventId: core.providerEventId,
-        },
-      },
-      select: { id: true },
-    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (!core.isSuccess || !hasMatchingSettlement(invoice, core.amountCents, core.currency)) {
+          await tx.paymentEvent.create({
+            data: {
+              invoiceId: invoice.id,
+              userId: invoice.userId,
+              provider: 'paymob',
+              providerEventId: core.providerEventId,
+              providerConnectionId,
+              type: core.isSuccess ? 'callback_rejected' : 'payment_failed',
+              amount: toDecimal(core.amountCents / 100),
+              currency: core.currency,
+              rawPayload: payload as Prisma.InputJsonValue,
+            },
+          });
 
-    if (existing) {
-      return Response.json({ message: 'Duplicate callback ignored' });
-    }
+          await tx.invoiceEvent.create({
+            data: {
+              invoiceId: invoice.id,
+              userId: invoice.userId,
+              type: core.isSuccess ? 'payment_callback_rejected' : 'payment_link_failed',
+              message: core.isSuccess
+                ? `Paymob callback rejected for ${invoice.invoiceNo} due to amount or currency mismatch`
+                : `Paymob reported a failed payment for ${invoice.invoiceNo}`,
+            },
+          });
 
-    await prisma.$transaction(async (tx) => {
-      await tx.paymentEvent.create({
-        data: {
-          invoiceId: invoice.id,
-          userId: invoice.userId,
-          provider: 'paymob',
-          providerEventId: core.providerEventId,
-          providerConnectionId,
-          type: core.isSuccess ? 'payment_succeeded' : 'payment_failed',
-          amount: toDecimal(core.amountCents / 100),
-          currency: core.currency,
-          rawPayload: payload,
-        },
-      });
+          return;
+        }
 
-      if (core.isSuccess) {
+        await tx.paymentEvent.create({
+          data: {
+            invoiceId: invoice.id,
+            userId: invoice.userId,
+            provider: 'paymob',
+            providerEventId: core.providerEventId,
+            providerConnectionId,
+            type: 'payment_succeeded',
+            amount: toDecimal(core.amountCents / 100),
+            currency: core.currency,
+            rawPayload: payload as Prisma.InputJsonValue,
+          },
+        });
+
         await tx.invoice.update({
           where: { id: invoice.id },
           data: {
@@ -198,19 +263,22 @@ export async function POST(request: Request) {
             ),
           },
         });
-      } else {
-        await tx.invoiceEvent.create({
-          data: {
-            invoiceId: invoice.id,
-            userId: invoice.userId,
-            type: 'payment_link_failed',
-            message: `Paymob reported a failed payment for ${invoice.invoiceNo}`,
-          },
-        });
+      });
+    } catch (error) {
+      if (isPaymobEventConflict(error)) {
+        return Response.json({ message: 'Duplicate callback ignored' });
       }
-    });
 
-    return Response.json({ message: 'Paymob callback accepted' });
+      throw error;
+    }
+
+    if (core.isSuccess && !hasMatchingSettlement(invoice, core.amountCents, core.currency)) {
+      return apiError('Paymob payment does not match invoice amount or currency', 409, 'CONFLICT');
+    }
+
+    return Response.json({
+      message: core.isSuccess ? 'Paymob callback accepted' : 'Paymob failure callback accepted',
+    });
   } catch (error) {
     console.error('Paymob webhook error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

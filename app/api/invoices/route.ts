@@ -2,6 +2,8 @@ import { PaymentLinkStatus, Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
+import { isDatabaseConnectivityError } from '@/lib/database-errors';
+import { requireEnv } from '@/lib/env';
 import {
   asDate,
   asEmail,
@@ -16,6 +18,7 @@ import { getDerivedOpenInvoiceStatus, syncOpenInvoiceStatuses } from '@/lib/invo
 import { clampInvoiceListPage, getInvoiceListTotalPages } from '@/lib/invoice-list-state';
 import { serializeInvoice } from '@/lib/invoice-serialization';
 import { ensureInvoiceOperationalArtifacts } from '@/lib/recovery-loop';
+import { callSupabaseRpc } from '@/lib/supabase-rpc';
 import { toDecimal } from '@/lib/money';
 
 interface CreateInvoiceBody {
@@ -253,8 +256,6 @@ export async function GET(request: Request) {
     }
     const userId = session.user.id;
 
-    await syncOpenInvoiceStatuses(prisma, userId);
-
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'all';
     const search = (searchParams.get('search') || '').trim();
@@ -284,23 +285,47 @@ export async function GET(request: Request) {
       where.OR = searchFilters;
     }
 
-    const total = await prisma.invoice.count({ where });
-    const totalPages = getInvoiceListTotalPages(total, limit);
-    const effectivePage = clampInvoiceListPage(page, totalPages);
-    const invoices = await prisma.invoice.findMany({
-      where,
-      include: invoiceInclude,
-      orderBy: { createdAt: 'desc' },
-      skip: (effectivePage - 1) * limit,
-      take: limit,
-    });
+    try {
+      await syncOpenInvoiceStatuses(prisma, userId);
 
-    return Response.json({
-      invoices: invoices.map(serializeInvoice),
-      total,
-      page: effectivePage,
-      totalPages,
-    });
+      const total = await prisma.invoice.count({ where });
+      const totalPages = getInvoiceListTotalPages(total, limit);
+      const effectivePage = clampInvoiceListPage(page, totalPages);
+      const invoices = await prisma.invoice.findMany({
+        where,
+        include: invoiceInclude,
+        orderBy: { createdAt: 'desc' },
+        skip: (effectivePage - 1) * limit,
+        take: limit,
+      });
+
+      return Response.json({
+        invoices: invoices.map(serializeInvoice),
+        total,
+        page: effectivePage,
+        totalPages,
+      });
+    } catch (error) {
+      if (isDatabaseConnectivityError(error)) {
+        const payload = await callSupabaseRpc<{
+          invoices: unknown[];
+          total: number;
+          page: number;
+          totalPages: number;
+        }>('app_list_invoices', {
+          p_user_id: userId,
+          p_status: status,
+          p_search: search,
+          p_page: page,
+          p_limit: limit,
+          p_secret: requireEnv('PROVIDER_CONFIG_SECRET'),
+        });
+
+        return Response.json(payload);
+      }
+
+      throw error;
+    }
   } catch (error) {
     console.error('Invoices list error:', error);
     return apiError('Internal server error', 500, 'INTERNAL_ERROR');

@@ -51,7 +51,7 @@ describe('dashboard state helpers', () => {
     const reminders: ReminderDraft[] = [
       {
         id: 'rem-2',
-        channel: 'sms',
+        channel: 'whatsapp',
         timing: '7 Days Overdue',
         template: 'B',
         providerTemplateName: null,
@@ -60,7 +60,7 @@ describe('dashboard state helpers', () => {
       },
       {
         id: 'rem-1',
-        channel: 'sms',
+        channel: 'whatsapp',
         timing: '1 Day Overdue',
         template: 'A',
         providerTemplateName: null,
