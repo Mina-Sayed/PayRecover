@@ -1,6 +1,6 @@
-import { ReminderRunStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
+import { ReminderRunStatus } from '@/lib/domain-enums';
 import { mapWatiDeliveryStatus, verifyWatiWebhookSignature } from '@/lib/wati';
 import { formatInvoiceEventMessage } from '@/lib/invoice-events';
 import { decryptProviderConfig, type WatiConnectionConfig } from '@/lib/provider-connections';

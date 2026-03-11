@@ -1,7 +1,7 @@
-import { ProviderConnectionMode, ProviderConnectionStatus } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
+import { ProviderConnectionMode, ProviderConnectionStatus } from '@/lib/domain-enums';
 import { asOptionalTrimmedString, asTrimmedString, isRecord } from '@/lib/validators';
 import {
   decryptProviderConfig,

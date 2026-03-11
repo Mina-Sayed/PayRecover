@@ -1,7 +1,7 @@
-import { ProviderConnectionStatus } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
+import { ProviderConnectionStatus } from '@/lib/domain-enums';
 import { decryptProviderConfig, toMessagingConnectionSummary, type WatiConnectionConfig } from '@/lib/provider-connections';
 import { syncOperationalArtifactsForUser } from '@/lib/recovery-loop';
 import { verifyWatiConnection } from '@/lib/wati';

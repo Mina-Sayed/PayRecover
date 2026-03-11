@@ -1,7 +1,7 @@
-import { ProviderConnectionStatus } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-response';
+import { ProviderConnectionStatus } from '@/lib/domain-enums';
 import { decryptProviderConfig, toPaymentConnectionSummary, type PaymobConnectionConfig } from '@/lib/provider-connections';
 import { syncOperationalArtifactsForUser } from '@/lib/recovery-loop';
 import { verifyPaymobConnection } from '@/lib/paymob';

@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import net from 'node:net';
 import {
+  type PrismaClient,
+} from '@prisma/client';
+import {
   MessagingProviderKind,
   PaymentProviderKind,
   ProviderConnectionMode,
   ProviderConnectionStatus,
-  type PrismaClient,
-} from '@prisma/client';
+} from '@/lib/domain-enums';
 import { getEnv, requireEnv } from '@/lib/env';
 
 export interface WatiConnectionConfig {
