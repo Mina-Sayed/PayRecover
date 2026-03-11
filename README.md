@@ -53,13 +53,20 @@ Required by the running application:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma |
+| `DATABASE_URL` | Yes | Supabase pooled connection string for runtime app traffic |
+| `DIRECT_URL` | Recommended | Session/direct connection string for Prisma migrations |
 | `AUTH_SECRET` | Yes | NextAuth signing secret |
-| `AUTH_URL` | Yes | Base application URL for NextAuth |
+| `AUTH_URL` | Yes | Public application URL used by Auth.js callbacks |
+| `AUTH_TRUST_HOST` | Recommended in production | Trust forwarded host/proto headers behind a proxy |
 | `CRON_SECRET` | Yes for live reminders | Authenticates the internal reminder-dispatch endpoint |
 | `PROVIDER_CONFIG_SECRET` | Yes for tenant-owned providers | Encrypts provider credentials stored per tenant |
 
 Provider credentials are tenant-owned and stored through provider-connection onboarding in the product. `PAYMOB_*` and `WATI_*` are no longer the mainline application configuration model for live tenant orchestration.
+
+For Supabase + Prisma production deployments, use:
+- `DATABASE_URL` as the Supabase pooled transaction-mode URL
+- `DIRECT_URL` as the Supabase session/direct URL for migrations
+- a real public `AUTH_URL`, not `localhost`
 
 ## Local Development
 
