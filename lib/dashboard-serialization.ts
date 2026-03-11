@@ -25,3 +25,26 @@ export function serializeDashboardRecentInvoice(invoice: DashboardRecentInvoiceR
     client: invoice.client,
   };
 }
+
+export const dashboardRecentActivityInclude = {
+  invoice: {
+    select: {
+      id: true,
+      invoiceNo: true,
+    },
+  },
+} satisfies Prisma.InvoiceEventInclude;
+
+export type DashboardRecentActivityRecord = Prisma.InvoiceEventGetPayload<{
+  include: typeof dashboardRecentActivityInclude;
+}>;
+
+export function serializeDashboardRecentActivity(event: DashboardRecentActivityRecord) {
+  return {
+    id: event.id,
+    type: event.type,
+    message: event.message,
+    createdAt: event.createdAt.toISOString(),
+    invoice: event.invoice,
+  };
+}

@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
-import { serializeDashboardRecentInvoice } from '@/lib/dashboard-serialization';
+import {
+  serializeDashboardRecentActivity,
+  serializeDashboardRecentInvoice,
+} from '@/lib/dashboard-serialization';
 
 describe('dashboard serialization helpers', () => {
   it('serializes recent invoices into dashboard-safe JSON', () => {
@@ -34,6 +37,32 @@ describe('dashboard serialization helpers', () => {
         id: 'client-1',
         name: 'Acme Corp',
         phone: '+15551234567',
+      },
+    });
+  });
+
+  it('serializes recent activity into dashboard-safe JSON', () => {
+    const serialized = serializeDashboardRecentActivity({
+      id: 'evt-1',
+      invoiceId: 'inv-1',
+      userId: 'user-1',
+      type: 'reminder_sent',
+      message: 'Reminder delivered',
+      createdAt: new Date('2026-03-11T01:00:00.000Z'),
+      invoice: {
+        id: 'inv-1',
+        invoiceNo: 'INV-001',
+      },
+    });
+
+    expect(serialized).toEqual({
+      id: 'evt-1',
+      type: 'reminder_sent',
+      message: 'Reminder delivered',
+      createdAt: '2026-03-11T01:00:00.000Z',
+      invoice: {
+        id: 'inv-1',
+        invoiceNo: 'INV-001',
       },
     });
   });

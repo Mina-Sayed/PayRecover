@@ -68,7 +68,18 @@ describe('/api/dashboard/stats route handler', () => {
         },
       },
     ]);
-    prismaMock.invoiceEvent.findMany.mockResolvedValue([]);
+    prismaMock.invoiceEvent.findMany.mockResolvedValue([
+      {
+        id: 'evt-1',
+        type: 'reminder_sent',
+        message: 'Reminder delivered',
+        createdAt: new Date('2026-03-11T01:00:00.000Z'),
+        invoice: {
+          id: 'inv-1',
+          invoiceNo: 'INV-001',
+        },
+      },
+    ]);
 
     const response = await route.GET();
     const body = await response.json();
@@ -98,6 +109,18 @@ describe('/api/dashboard/stats route handler', () => {
           },
         },
       ],
+      recentActivity: [
+        {
+          id: 'evt-1',
+          type: 'reminder_sent',
+          message: 'Reminder delivered',
+          createdAt: '2026-03-11T01:00:00.000Z',
+          invoice: {
+            id: 'inv-1',
+            invoiceNo: 'INV-001',
+          },
+        },
+      ],
     });
     expect(typeof body.overdueCount).toBe('number');
     expect(prismaMock.invoice.updateMany).toHaveBeenCalledTimes(2);
@@ -115,6 +138,18 @@ describe('/api/dashboard/stats route handler', () => {
               id: true,
               name: true,
               phone: true,
+            },
+          },
+        },
+      })
+    );
+    expect(prismaMock.invoiceEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          invoice: {
+            select: {
+              id: true,
+              invoiceNo: true,
             },
           },
         },

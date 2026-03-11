@@ -5,7 +5,9 @@ import { isDatabaseConnectivityError } from '@/lib/database-errors';
 import { requireEnv } from '@/lib/env';
 import { syncOpenInvoiceStatuses } from '@/lib/invoice-status';
 import {
+  dashboardRecentActivityInclude,
   dashboardRecentInvoiceInclude,
+  serializeDashboardRecentActivity,
   serializeDashboardRecentInvoice,
 } from '@/lib/dashboard-serialization';
 import { decimalToNumber } from '@/lib/money';
@@ -112,14 +114,7 @@ export async function GET() {
             where: { userId },
             orderBy: { createdAt: 'desc' },
             take: 6,
-            include: {
-              invoice: {
-                select: {
-                  id: true,
-                  invoiceNo: true,
-                },
-              },
-            },
+            include: dashboardRecentActivityInclude,
           }),
         ]);
 
@@ -134,13 +129,7 @@ export async function GET() {
         remindersFailedLast7Days,
         confirmedPaymentsThisMonth,
         recentInvoices: recentInvoices.map(serializeDashboardRecentInvoice),
-        recentActivity: recentActivity.map((event) => ({
-          id: event.id,
-          type: event.type,
-          message: event.message,
-          createdAt: event.createdAt.toISOString(),
-          invoice: event.invoice,
-        })),
+        recentActivity: recentActivity.map(serializeDashboardRecentActivity),
       });
     } catch (error) {
       if (isDatabaseConnectivityError(error)) {
