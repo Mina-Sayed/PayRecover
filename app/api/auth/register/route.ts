@@ -1,4 +1,3 @@
-import type { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
@@ -10,10 +9,10 @@ interface RegisterBody {
   password?: unknown;
 }
 
-type TransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'
->;
+type TransactionClient = {
+  user: Pick<typeof prisma.user, 'create'>;
+  reminderTemplate: Pick<typeof prisma.reminderTemplate, 'createMany'>;
+};
 
 export async function POST(request: Request) {
   try {
