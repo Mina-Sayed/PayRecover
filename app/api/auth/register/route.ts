@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { apiError, readJsonBody } from '@/lib/api-response';
@@ -9,6 +9,11 @@ interface RegisterBody {
   email?: unknown;
   password?: unknown;
 }
+
+type TransactionClient = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'
+>;
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const user = await prisma.$transaction(async (tx: TransactionClient) => {
       const createdUser = await tx.user.create({
         data: {
           name,
