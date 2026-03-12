@@ -10,6 +10,12 @@ describe('database connectivity errors', () => {
   it('detects timeout-style database failures by message', () => {
     expect(isDatabaseConnectivityError({ message: 'timeout expired while connecting' })).toBe(true);
     expect(isDatabaseConnectivityError({ message: 'connect ENETUNREACH 2a05:d018::5432' })).toBe(true);
+    expect(
+      isDatabaseConnectivityError({
+        code: 'P1001',
+        message: "Can't reach database server at db.fkweqrvrmsydmhrjgagr.supabase.co",
+      })
+    ).toBe(true);
   });
 
   it('does not classify unrelated errors as connectivity failures', () => {

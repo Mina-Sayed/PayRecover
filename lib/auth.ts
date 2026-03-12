@@ -9,7 +9,9 @@ import {
   isAuthRateLimited,
   recordAuthFailure,
 } from '@/lib/auth-rate-limit';
+import { isDatabaseConnectivityError } from '@/lib/database-errors';
 import { requireEnv, validateRequiredEnvVars } from '@/lib/env';
+import { callSupabaseRpc } from '@/lib/supabase-rpc';
 import { asEmail, asTrimmedString } from '@/lib/validators';
 
 validateRequiredEnvVars(['AUTH_SECRET', 'AUTH_URL']);
@@ -42,9 +44,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email },
-        });
+        let user:
+          | {
+              id: string;
+              email: string;
+              name: string | null;
+              image: string | null;
+              hashedPassword: string | null;
+            }
+          | null;
+
+        try {
+          user = await prisma.user.findUnique({
+            where: { email },
+          });
+        } catch (error) {
+          if (!isDatabaseConnectivityError(error)) {
+            throw error;
+          }
+
+          user = await callSupabaseRpc<typeof user>('app_get_auth_user', {
+            p_email: email,
+            p_secret: requireEnv('PROVIDER_CONFIG_SECRET'),
+          });
+        }
 
         if (!user?.hashedPassword) {
           recordAuthFailure(email, ipAddress);

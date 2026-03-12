@@ -14,6 +14,7 @@ async function loadAuthConfig() {
   const adapterMock = vi.fn(() => ({}));
   const compareMock = vi.fn();
   const userFindUniqueMock = vi.fn();
+  const callSupabaseRpcMock = vi.fn();
 
   vi.doMock('next-auth', () => ({ default: nextAuthMock }));
   vi.doMock('next-auth/providers/credentials', () => ({ default: credentialsFactoryMock }));
@@ -30,6 +31,9 @@ async function loadAuthConfig() {
       },
     },
   }));
+  vi.doMock('@/lib/supabase-rpc', () => ({
+    callSupabaseRpc: callSupabaseRpcMock,
+  }));
   vi.doMock('@/lib/env', () => ({
     requireEnv: vi.fn(() => 'test-secret'),
     validateRequiredEnvVars: vi.fn(),
@@ -43,7 +47,7 @@ async function loadAuthConfig() {
     providers: Array<{ authorize: (credentials: unknown, request: Request) => Promise<unknown> }>;
   };
 
-  return { config, compareMock, userFindUniqueMock };
+  return { config, compareMock, userFindUniqueMock, callSupabaseRpcMock };
 }
 
 describe('credentials authorize flow', () => {
@@ -137,5 +141,42 @@ describe('credentials authorize flow', () => {
 
     expect(result).toBeNull();
     expect(compareMock).toHaveBeenCalledTimes(5);
+  });
+
+  it('falls back to Supabase RPC when Prisma connectivity fails', async () => {
+    const { config, compareMock, userFindUniqueMock, callSupabaseRpcMock } = await loadAuthConfig();
+    const request = new Request('http://localhost/api/auth/callback/credentials', {
+      headers: {
+        'x-forwarded-for': '203.0.113.10',
+      },
+    });
+
+    userFindUniqueMock.mockRejectedValue({
+      code: 'P1001',
+      message: "Can't reach database server at db.fkweqrvrmsydmhrjgagr.supabase.co",
+    });
+    callSupabaseRpcMock.mockResolvedValue({
+      id: 'user-1',
+      email: 'mina@example.com',
+      name: 'Mina',
+      image: null,
+      hashedPassword: 'stored-hash',
+    });
+    compareMock.mockResolvedValue(true);
+
+    const result = await config.providers[0].authorize({
+      email: 'mina@example.com',
+      password: 'secret123',
+    }, request);
+
+    expect(callSupabaseRpcMock).toHaveBeenCalledWith('app_get_auth_user', {
+      p_email: 'mina@example.com',
+      p_secret: 'test-secret',
+    });
+    expect(compareMock).toHaveBeenCalledWith('secret123', 'stored-hash');
+    expect(result).toMatchObject({
+      id: 'user-1',
+      email: 'mina@example.com',
+    });
   });
 });

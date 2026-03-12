@@ -4,6 +4,7 @@ async function loadRegisterRoute() {
   vi.resetModules();
 
   const hashMock = vi.fn();
+  const callSupabaseRpcMock = vi.fn();
   const transactionClient = {
     user: {
       create: vi.fn(),
@@ -26,9 +27,10 @@ async function loadRegisterRoute() {
     },
   }));
   vi.doMock('@/lib/prisma', () => ({ prisma: prismaMock }));
+  vi.doMock('@/lib/supabase-rpc', () => ({ callSupabaseRpc: callSupabaseRpcMock }));
 
   const route = await import('@/app/api/auth/register/route');
-  return { route, hashMock, prismaMock, transactionClient };
+  return { route, hashMock, prismaMock, transactionClient, callSupabaseRpcMock };
 }
 
 describe('POST /api/auth/register', () => {
@@ -117,6 +119,70 @@ describe('POST /api/auth/register', () => {
     expect(transactionClient.user.create).toHaveBeenCalledTimes(1);
     expect(transactionClient.reminderTemplate.createMany).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Supabase RPC when database connectivity fails', async () => {
+    const { route, hashMock, prismaMock, callSupabaseRpcMock } = await loadRegisterRoute();
+    hashMock.mockResolvedValue('hashed-password');
+    prismaMock.$transaction.mockRejectedValue({
+      code: 'P1001',
+      message: "Can't reach database server at db.fkweqrvrmsydmhrjgagr.supabase.co",
+    });
+    callSupabaseRpcMock.mockResolvedValue({ userId: 'user-rpc-1' });
+
+    const request = new Request('http://localhost/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Mina',
+        email: 'mina@example.com',
+        password: 'Strongpass123',
+      }),
+    });
+
+    const response = await route.POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({
+      message: 'User created successfully',
+      userId: 'user-rpc-1',
+    });
+    expect(callSupabaseRpcMock).toHaveBeenCalledWith('app_register_user', {
+      p_name: 'Mina',
+      p_email: 'mina@example.com',
+      p_hashed_password: 'hashed-password',
+      p_secret: process.env.PROVIDER_CONFIG_SECRET,
+    });
+  });
+
+  it('maps duplicate email from the fallback RPC to 409', async () => {
+    const { route, hashMock, prismaMock, callSupabaseRpcMock } = await loadRegisterRoute();
+    hashMock.mockResolvedValue('hashed-password');
+    prismaMock.$transaction.mockRejectedValue({
+      code: 'P1001',
+      message: "Can't reach database server at db.fkweqrvrmsydmhrjgagr.supabase.co",
+    });
+    callSupabaseRpcMock.mockRejectedValue(new Error('email already in use'));
+
+    const request = new Request('http://localhost/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Mina',
+        email: 'mina@example.com',
+        password: 'Strongpass123',
+      }),
+    });
+
+    const response = await route.POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error: 'Email already in use',
+      code: 'CONFLICT',
+    });
   });
 
   it('rejects weak passwords before touching the database', async () => {
