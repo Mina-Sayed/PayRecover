@@ -10,6 +10,8 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -36,8 +38,14 @@ jobs:
           AUTH_URL: http://localhost:3000
         run: npm run build
 
-  security:
+  vercel-parity:
+    if: ${{ secrets.VERCEL_TOKEN != '' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: team_duFIGt4V8amthiIRE7wCS0zF
+      VERCEL_PROJECT_ID: prj_VAhVTuFr5zsDXMKVWy8ABl3bQww5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,7 +53,49 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Select Vercel environment
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "VERCEL_ENV=production" >> "$GITHUB_ENV"
+            echo "VERCEL_BRANCH=main" >> "$GITHUB_ENV"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "VERCEL_ENV=preview" >> "$GITHUB_ENV"
+            echo "VERCEL_BRANCH=${GITHUB_HEAD_REF}" >> "$GITHUB_ENV"
+          else
+            echo "VERCEL_ENV=preview" >> "$GITHUB_ENV"
+            echo "VERCEL_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Pull Vercel project settings and env
+        run: >
+          npx vercel@latest pull
+          --yes
+          --environment="${VERCEL_ENV}"
+          --git-branch="${VERCEL_BRANCH}"
+          --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Run Vercel parity build
+        run: npx vercel@latest build --token="${{ secrets.VERCEL_TOKEN }}"
+
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
           cache: npm
 
       - name: Install dependencies

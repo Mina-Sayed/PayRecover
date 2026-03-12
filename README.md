@@ -91,6 +91,14 @@ npm run build
 npm audit --omit=dev --audit-level=high
 ```
 
+## CI/CD
+
+- GitHub Actions is the quality gate for lint, tests, and a clean Prisma-backed app build.
+- Vercel remains the deploy engine for preview and production environments through Git integration.
+- The workflow includes a Vercel-parity build that pulls project settings and environment variables from the live Vercel project instead of duplicating app secrets in GitHub.
+- To enable the Vercel-parity job, add `VERCEL_TOKEN` as a GitHub Actions secret. The project and team identifiers are already wired into the workflow.
+- The repository now ignores `.vercel/` so local `vercel pull` state is never committed.
+
 ## Core API Surface
 
 - `POST /api/auth/register`
