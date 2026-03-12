@@ -1,8 +1,10 @@
 'use client';
 
+'use client';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { LayoutDashboard, Users, MessageSquare, Settings, Menu, X, LogOut } from 'lucide-react';
 
@@ -15,6 +17,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { data: session } = useSession();
 
@@ -26,6 +29,12 @@ export default function Sidebar() {
   const userInitials = session?.user?.name
     ? session.user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+
+  async function handleSignOut() {
+    await signOut({ redirect: false });
+    router.push('/');
+    router.refresh();
+  }
 
   const sidebarContent = (
     <>
@@ -85,7 +94,7 @@ export default function Sidebar() {
             <span className="text-xs text-slate-500 truncate">{session?.user?.email || ''}</span>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={handleSignOut}
             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
             title="Sign out"
           >
